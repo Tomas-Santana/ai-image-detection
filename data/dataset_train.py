@@ -1,9 +1,8 @@
 import cv2
 import numpy as np
 import torch
-import torchvision.datasets as datasets
+import torch.utils.data as data
 import torchvision.transforms as transforms
-import torchvision.transforms.functional as TF
 from random import random, choice
 from io import BytesIO
 from PIL import Image
@@ -13,9 +12,10 @@ import copy
 import os
 import imageio
 import torch.multiprocessing
-torch.multiprocessing.set_sharing_strategy('file_system')
-ImageFile.LOAD_TRUNCATED_IMAGES = True
 import dlib
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 def face_crop(imgpath):
     img = dlib.load_rgb_image(imgpath)
@@ -101,18 +101,22 @@ def jpeg_from_key(img, compress_val, key):
 
 
 
-class read_data():
+
+class DeepFakeDataset(data.Dataset):
     def __init__(self, opt, root):
         self.opt = opt
         self.root = root
 
-        real_img_list = [os.path.join(self.root, '0_real', train_file) for train_file in 
-                        os.listdir(os.path.join(self.root, '0_real'))]
+        real_img_path = os.path.join(self.root, '0_real')
+        fake_img_path = os.path.join(self.root, '1_fake')
+
+        real_img_list = [os.path.join(real_img_path, train_file) for train_file in 
+                        os.listdir(real_img_path)]
                        
         real_label_list = [0 for _ in range(len(real_img_list))]
 
-        fake_img_list = [os.path.join(self.root, '1_fake', train_file) for train_file in
-                        os.listdir(os.path.join(self.root, '1_fake'))]
+        fake_img_list = [os.path.join(fake_img_path, train_file) for train_file in
+                        os.listdir(fake_img_path)]
 
         fake_label_list = [1 for _ in range(len(fake_img_list))]
 
@@ -128,9 +132,9 @@ class read_data():
         img_name = self.img[index]
         
         if len(img.shape) < 3:
-            img=np.asarray(img)[..., np.newaxis]
-        if len(img.shape) == 3 and img.shape[-1]==1:
-            img=np.tile(np.asarray(img), (1,1,3))
+            img = np.asarray(img)[..., np.newaxis]
+        if len(img.shape) == 3 and img.shape[-1] == 1:
+            img = np.tile(np.asarray(img), (1, 1, 3))
         
         img = Image.fromarray(img, mode='RGB')
 

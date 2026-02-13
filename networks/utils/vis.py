@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from config import proposalN
+from networks.config import proposalN
 
 def image_with_boxes(image, coordinates=None, color=None):
     '''

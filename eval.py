@@ -1,11 +1,10 @@
 import os
-import csv
 import torch
-from networks.trainer import Patch5Model
+from networks.patch_model import Patch5Model
 from options.test_options import TestOptions
-from eval_config import *
-from sklearn.metrics import average_precision_score, precision_recall_curve, accuracy_score, confusion_matrix
-from options.test_options import TestOptions
+# from eval_config import *
+import eval_config
+from sklearn.metrics import average_precision_score, accuracy_score, confusion_matrix
 import sys
 sys.path.append('./data')
 from data import create_dataloader_test
@@ -13,7 +12,6 @@ from sklearn.metrics import roc_curve, auc
 import numpy as np
 from PIL import ImageFile
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -52,13 +50,13 @@ def validate(model, data_loader):
 
 if __name__ == '__main__':
     opt = TestOptions().parse(print_options=False)
-    model_name = os.path.basename(model_path).replace('.pth', '')
+    model_name = os.path.basename(eval_config.model_path).replace('.pth', '')
     rows = [["{} model testing on...".format(model_name)],
         ['testset', 'oa', 'auc', 'ap']]
     
 
     model = Patch5Model()
-    state_dict = torch.load(model_path, map_location='cpu')
+    state_dict = torch.load(eval_config.model_path, map_location='cpu')
     from collections import OrderedDict
     new_state_dict = OrderedDict()
     for k, v in state_dict['model'].items():
@@ -68,13 +66,13 @@ if __name__ == '__main__':
     model.cuda()
     model.eval()
 
-    for v_id, val in enumerate(vals):
+    for v_id, val in enumerate(eval_config.vals):
         print("testing classes: ", val)
-        opt.dataroot = '{}/{}'.format(dataroot, val)
+        opt.dataroot = '{}/{}'.format(eval_config.dataroot, val)
         
-        opt.classes = os.listdir(opt.dataroot) if multiclass[v_id] else ['']
+        opt.classes = os.listdir(opt.dataroot) if eval_config.multiclass[v_id] else ['']
         opt.no_resize = True    # testing without resizing by default
-        data_loader = create_dataloader_test(opt) 
+        data_loader = create_dataloader_test(opt)  
         oa, roc_auc, ap = validate(model, data_loader)
         print("oa: {}; auc: {}; ap: {}".format(oa, roc_auc, ap))
         

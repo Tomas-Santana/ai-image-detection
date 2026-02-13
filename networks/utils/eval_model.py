@@ -5,7 +5,7 @@ from tensorboardX import SummaryWriter
 import numpy as np
 from config import coordinates_cat, proposalN, set, vis_num
 from utils.cal_iou import calculate_iou
-from utils.vis import image_with_boxes
+from util.vis import image_with_boxes
 
 def eval(model, testloader, criterion, status, save_path, epoch):
     model.eval()
