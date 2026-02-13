@@ -1,0 +1,16 @@
+[project]
+name = "glff"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "gcs-torch-dataflux>=1.4.0",
+    "matplotlib>=3.10.8",
+    "open-clip-torch>=3.2.0",
+    "scikit-learn>=1.8.0",
+    "tensorboardx>=2.6.4",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+    "tqdm>=4.67.3",
+]

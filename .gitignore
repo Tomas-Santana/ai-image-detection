@@ -1,0 +1,8 @@
+.venv
+.ruff_cache
+__pycache__
+DATAROOT/
+tiny_genimage/
+*.png
+*.jpg
+*.jpeg
