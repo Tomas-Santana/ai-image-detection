@@ -9,58 +9,126 @@ from io import BytesIO
 from dataflux_pytorch import dataflux_mapstyle_dataset
 
 
-def build_processing_pipeline(opt: DatasetOptions):
-    return v2.Compose(
-        [
-            v2.ToImage(),
-            v2.RandomApply(
-                [v2.GaussianBlur(kernel_size=5, sigma=opt.blur_sigma)],
-                p=opt.transforms.get("blur", 0),
-            ),
-            v2.RandomApply(
-                [v2.JPEG(quality=opt.jpeg_quality)], p=opt.transforms.get("jpeg", 0)
-            ),
-            v2.Resize((256, 256), antialias=True),
-            v2.ToDtype(torch.float32, scale=True),  # Convierte a [0, 1]
-            v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
+
+class Processor:
+    """
+    Returns:
+      - input_img:  normalized tensor, used for local patch crops
+      - cropped_img: normalized 224x224 tensor, used for global CLIP branch
+      - scale: (H, W) of the image that `input_img` corresponds to
+    """
+
+    def __init__(
+        self,
+        opt: DatasetOptions,
+        *,
+        train: bool,
+        input_size: int = 256,
+        crop_size: int = 224,
+    ):
+        self._train = train
+        self._input_size = input_size
+        self._crop_size = crop_size
+
+        self._to_image = v2.ToImage()
+        
+        self._augment = v2.Compose(
+            [
+                v2.RandomApply(
+                    [v2.GaussianBlur(kernel_size=5, sigma=opt.blur_sigma)],
+                    p=opt.transforms.get("blur", 0),
+                ),
+                v2.RandomApply(
+                    [v2.JPEG(quality=opt.jpeg_quality)], 
+                    p=opt.transforms.get("jpeg", 0)
+                ),
+                v2.RandomHorizontalFlip(
+                    p=opt.transforms.get("hflip", 0)
+                ),
+            ]
+        )
+
+        self._make_cropped = v2.Compose(
+            [
+                v2.Resize(crop_size, antialias=True),
+                v2.CenterCrop(crop_size),
+            ]
+        )
+
+        self._to_float = v2.ToDtype(torch.float32, scale=True)
+        self._norm = v2.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+
+    def __call__(
+        self, pil_img: Image.Image
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        img = self._to_image(pil_img)
+        _, h, w = img.shape
+        
+        if self._train:
+            img = self._augment(img)
+            
+        input_img = self._norm(self._to_float(img))
+
+        cropped = self._make_cropped(img)
+        cropped_img = self._norm(self._to_float(cropped))
+
+        scale = torch.tensor([h, w])
+        return input_img, cropped_img, scale
 
 class GenImageDataset(Dataset):
-    def __init__(self, root: str, pipeline: v2.Compose | transforms.Compose):
+    """Like GenImageDataset, but returns the old GLFF tuple.
+
+    Output matches data/dataset_train.py:
+      (input_img, cropped_img, target, scale, img_name)
+    """
+
+    def __init__(
+        self,
+        root: str,
+        opt: DatasetOptions,
+        *,
+        train: bool = True,
+        input_size: int = 256,
+        crop_size: int = 224,
+    ):
         super().__init__()
-        self.pipeline = pipeline
         self.root = root
+        self.processor = Processor(
+            opt, train=train, input_size=input_size, crop_size=crop_size
+        )
 
-        self.images = []
-        self.labels = []
-
+        self.images: list[str] = []
+        self.labels: list[int] = []
         for label_idx, folder in enumerate(["ai", "nature"]):
             folder_path = os.path.join(self.root, folder)
             if os.path.exists(folder_path):
                 imgs = [os.path.join(folder_path, f) for f in os.listdir(folder_path)]
                 self.images.extend(imgs)
-                self.labels.extend([float(label_idx)] * len(imgs))
+                self.labels.extend([int(label_idx)] * len(imgs))
 
         self.image_len = len(self.images)
 
-    def rgb_loader(self, path) -> Image.Image:
+    def rgb_loader(self, path: str) -> Image.Image:
         with open(path, "rb") as f:
             img = Image.open(f)
             return img.convert("RGB")
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int):
         try:
-            image = self.rgb_loader(self.images[index])
+            img_path = self.images[index]
+            image = self.rgb_loader(img_path)
             label = self.labels[index]
         except Exception:
-            new_index = index - 1
-            image = self.rgb_loader(self.images[max(0, new_index)])
-            label = self.labels[max(0, new_index)]
+            new_index = max(0, index - 1)
+            img_path = self.images[new_index]
+            image = self.rgb_loader(img_path)
+            label = self.labels[new_index]
 
-        image = self.pipeline(image)
-        return image, label
+        input_img, cropped_img, scale = self.processor(image)
+        return input_img, cropped_img, label, scale, img_path
 
     def __len__(self):
         return self.image_len
@@ -68,16 +136,21 @@ class GenImageDataset(Dataset):
 
 def load_dataflux_mapstyle_dataset(
     opt: DatasetOptions,
+    *,
+    train: bool = True,
+    input_size: int = 256,
+    crop_size: int = 224,
 ) -> dataflux_mapstyle_dataset.DataFluxMapStyleDataset:
     bucket_name = opt.dataroot.replace("gs://", "").split("/")[0]
     prefix = "/".join(opt.dataroot.replace("gs://", "").split("/")[1:])
 
-    pipeline = build_processing_pipeline(opt)
+    processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
 
-    def format_fn(path: str, bytes_content: bytes) -> tuple[torch.Tensor, torch.Tensor]:
+    def format_fn(path: str, bytes_content: bytes):
         img: Image.Image = Image.open(BytesIO(bytes_content)).convert("RGB")
         label = 1 if "nature" in path else 0
-        return pipeline(img), torch.tensor(label)
+        input_img, cropped_img, scale = processor(img)
+        return input_img, cropped_img, int(label), scale, path
 
     return dataflux_mapstyle_dataset.DataFluxMapStyleDataset(
         project_name=opt.gcp_project_name,
@@ -87,28 +160,60 @@ def load_dataflux_mapstyle_dataset(
     )
 
 
-def load_dataset(model_path: str, opt: DatasetOptions) -> Dataset:
+def load_dataset(
+    model_path: str,
+    opt: DatasetOptions,
+    *,
+    train: bool = True,
+    input_size: int = 256,
+    crop_size: int = 224,
+) -> Dataset:
     if model_path.startswith("gs://"):
-        return load_dataflux_mapstyle_dataset(opt)
-    else:
-        return GenImageDataset(model_path, build_processing_pipeline(opt))
+        return load_dataflux_mapstyle_dataset(
+            opt, train=train, input_size=input_size, crop_size=crop_size
+        )
+    return GenImageDataset(
+        model_path, opt, train=train, input_size=input_size, crop_size=crop_size
+    )
 
 
-def get_loader(opt: DatasetOptions):
+def get_loader(
+    opt: DatasetOptions,
+    *,
+    train: bool = True,
+    input_size: int = 256,
+    crop_size: int = 224,
+) -> DataLoader:
+    """
+    Each batch item is:
+      input_img:  [3, input_size, input_size]
+      cropped_img:[3, crop_size, crop_size]
+      target:     int (0=ai, 1=nature)
+      scale:      [2] tensor (H, W) matching input_img
+      img_name:   string path
+    """
+
     datasets: list[Dataset] = []
     for model in opt.models:
         model_path = os.path.join(opt.dataroot, model)
-        datasets.append(load_dataset(model_path, opt))
+        datasets.append(
+            load_dataset(
+                model_path,
+                opt,
+                train=train,
+                input_size=input_size,
+                crop_size=crop_size,
+            )
+        )
 
-    train_dataset = torch.utils.data.ConcatDataset(datasets)
-    train_loader = DataLoader(
-        train_dataset,
+    dataset = torch.utils.data.ConcatDataset(datasets)
+    return DataLoader(
+        dataset,
         batch_size=opt.batch_size,
-        shuffle=True,
+        shuffle=train,
         num_workers=opt.workers,
         pin_memory=True,
     )
-    return train_loader
 
 
 """
