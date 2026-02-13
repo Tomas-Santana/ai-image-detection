@@ -1,3 +1,6 @@
+from typing import Union
+import torch
+from typing import Optional, Type
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 
@@ -15,21 +18,26 @@ model_urls = {
 }
 
 
-def conv3x3(in_planes, out_planes, stride=1):
+def conv3x3(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
 
 
-def conv1x1(in_planes, out_planes, stride=1):
+def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """1x1 convolution"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
 class BasicBlock(nn.Module):
     expansion = 1
+    conv1: nn.Conv2d
+    conv2: nn.Conv2d
+    bn1: nn.BatchNorm2d
+    bn2: nn.BatchNorm2d
+    downsample: nn.Sequential | None
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, inplanes: int, planes: int, stride: int = 1, downsample: Optional[nn.Sequential] = None):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -39,21 +47,21 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         identity = x
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
+        out: torch.Tensor = self.conv1(x)
+        out: torch.Tensor = self.bn1(out)
+        out: torch.Tensor = self.relu(out)
 
-        out = self.conv2(out)
-        out = self.bn2(out)
+        out: torch.Tensor = self.conv2(out)
+        out: torch.Tensor = self.bn2(out)
 
         if self.downsample is not None:
-            identity = self.downsample(x)
+            identity: torch.Tensor = self.downsample(x)
 
         out += identity
-        out = self.relu(out)
+        out: torch.Tensor = self.relu(out)
 
         return out
 
@@ -61,7 +69,7 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, inplanes: int, planes: int, stride: int = 1, downsample: Optional[nn.Sequential] = None):
         super(Bottleneck, self).__init__()
         self.conv1 = conv1x1(inplanes, planes)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -73,32 +81,32 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         identity = x
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
+        out: torch.Tensor = self.conv1(x)
+        out: torch.Tensor = self.bn1(out)
+        out: torch.Tensor = self.relu(out)
 
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
+        out: torch.Tensor = self.conv2(out)
+        out: torch.Tensor = self.bn2(out)
+        out: torch.Tensor = self.relu(out)
 
-        out = self.conv3(out)
-        out = self.bn3(out)
+        out: torch.Tensor = self.conv3(out)
+        out: torch.Tensor = self.bn3(out)
 
         if self.downsample is not None:
-            identity = self.downsample(x)
+            identity: torch.Tensor = self.downsample(x)
 
         out += identity
-        out = self.relu(out)
+        out: torch.Tensor = self.relu(out)
 
         return out
 
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=False):
+    def __init__(self, block: Type[Union[BasicBlock, Bottleneck]], layers: list[int], num_classes: int = 1000, zero_init_residual: bool = False):
         super(ResNet, self).__init__()
         self.inplanes = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
@@ -131,7 +139,7 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, block: Type[Union[BasicBlock, Bottleneck]], planes: int, blocks: int, stride: int = 1) -> nn.Sequential:
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
@@ -139,7 +147,7 @@ class ResNet(nn.Module):
                 nn.BatchNorm2d(planes * block.expansion),
             )
 
-        layers = []
+        layers: list[nn.Module] = []
         layers.append(block(self.inplanes, planes, stride, downsample))
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
@@ -147,18 +155,18 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        x: torch.Tensor = self.conv1(x)
+        x: torch.Tensor = self.bn1(x)
+        x: torch.Tensor = self.relu(x)
         shallow = x #[B, 64, 112, 112]
-        x = self.maxpool(x) #[B, 64, 56, 56]
+        x: torch.Tensor = self.maxpool(x) #[B, 64, 56, 56]
 
-        x = self.layer1(x) #[B, 256, 56, 56]
-        x = self.layer2(x)
+        x: torch.Tensor = self.layer1(x) #[B, 256, 56, 56]
+        x: torch.Tensor = self.layer2(x)
         #middle = x #[B, 512, 28, 28]
-        x = self.layer3(x) #[B, 1024, 14, 14]
-        x = self.layer4(x) # [batch_size, 2048, 7, 7]
+        x: torch.Tensor = self.layer3(x) #[B, 1024, 14, 14]
+        x: torch.Tensor = self.layer4(x) # [batch_size, 2048, 7, 7]
 
         high = x # fm: [batch_size, 2048, 7, 7]
 
@@ -171,7 +179,7 @@ class ResNet(nn.Module):
         return shallow, high
 
 
-def resnet18(pretrained=False, **kwargs):
+def resnet18(pretrained=False, **kwargs) -> ResNet:
     """Constructs a ResNet-18 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
@@ -182,7 +190,7 @@ def resnet18(pretrained=False, **kwargs):
     return model
 
 
-def resnet34(pretrained=False, **kwargs):
+def resnet34(pretrained=False, **kwargs) -> ResNet:
     """Constructs a ResNet-34 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
@@ -193,18 +201,18 @@ def resnet34(pretrained=False, **kwargs):
     return model
 
 
-def resnet50(pretrained=False, **kwargs):
+def resnet50(pretrained=False, **kwargs) -> ResNet:
     """Constructs a ResNet-50 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
     if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet50'], model_dir='/projects/yanju/1twob-attentionfusion/checkpoints/'), strict=False)
+        model.load_state_dict(model_zoo.load_url(model_urls['resnet50']), strict=False)
     return model
 
 
-def resnet101(pretrained=False, **kwargs):
+def resnet101(pretrained=False, **kwargs) -> ResNet:
     """Constructs a ResNet-101 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
@@ -215,7 +223,7 @@ def resnet101(pretrained=False, **kwargs):
     return model
 
 
-def resnet152(pretrained=False, **kwargs):
+def resnet152(pretrained=False, **kwargs) -> ResNet:
     """Constructs a ResNet-152 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
