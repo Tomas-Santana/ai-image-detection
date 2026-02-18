@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def ComputeCoordinate(image_size, stride, indice, ratio):
     size = int(image_size / stride)
     column_window_num = (size - ratio[1]) + 1
@@ -26,6 +27,5 @@ def indices2coordinates(indices, stride, image_size, ratio):
     for j, indice in enumerate(indices):
         coordinates.append(ComputeCoordinate(image_size, stride, indice, ratio))
 
-    coordinates = np.array(coordinates).reshape(batch,4).astype(int)       # [N, 4]
+    coordinates = np.array(coordinates).reshape(batch, 4).astype(int)  # [N, 4]
     return coordinates
-
