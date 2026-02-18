@@ -13,20 +13,19 @@ class CLIPResNet(nn.Module):
         self.clip_model, _, _ = open_clip.create_model_and_transforms(
             model_name, pretrained="openai", jit=False
         )
-        self.visual: open_clip.model.ModifiedResNet = self.clip_model.visual
+        self.visual: open_clip.model.ModifiedResNet = self.clip_model.visual  # type:ignore
 
         if frozen:
             for param in self.parameters():
                 param.requires_grad = False
 
     def stem_no_pool(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.visual.relu1(self.visual.bn1(self.visual.conv1(x))) # ty:ignore[call-non-callable]
-        x = self.visual.relu2(self.visual.bn2(self.visual.conv2(x))) # ty:ignore[call-non-callable]
-        x = self.visual.relu3(self.visual.bn3(self.visual.conv3(x))) # ty:ignore[call-non-callable]
+        x = self.visual.relu1(self.visual.bn1(self.visual.conv1(x)))  # type:ignore
+        x = self.visual.relu2(self.visual.bn2(self.visual.conv2(x)))  # type:ignore
+        x = self.visual.relu3(self.visual.bn3(self.visual.conv3(x)))  # type:ignore
         return x
-        
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x = x.type(self.visual.conv1.weight.dtype)  # X shape: [B, 3, H, W]
 
         shallow = self.stem_no_pool(x)  # X shape: [B, 64, H/4, W/4]
@@ -39,6 +38,3 @@ class CLIPResNet(nn.Module):
         high = self.visual.layer4(x)  # X shape: [B, 2048, H/32, W/32]
 
         return shallow, high
-
-    
-    
