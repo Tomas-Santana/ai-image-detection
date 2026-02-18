@@ -3,18 +3,17 @@ import sys
 import time
 import torch
 import torch.nn
-import argparse
-from PIL import Image
 from tensorboardX import SummaryWriter
 import numpy as np
-sys.path.append('./data')
 from data import create_dataloader
 from earlystop import EarlyStopping
 from networks.trainer import Trainer
 from options.train_options import TrainOptions
-from sklearn.metrics import average_precision_score, precision_recall_curve, accuracy_score, roc_curve, auc
+from sklearn.metrics import average_precision_score, accuracy_score, roc_curve, auc
 
-"""Currently assumes jpg_prob, blur_prob 0 or 1"""
+sys.path.append('./data')
+
+# Currently assumes jpg_prob, blur_prob 0 or 1
 
 def validate(model, opt):
     data_loader = create_dataloader(opt)
@@ -70,6 +69,8 @@ if __name__ == '__main__':
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(trainable_params)
     
+    val_opt = get_val_opt()
+
     early_stopping = EarlyStopping(patience=opt.earlystop_epoch, delta=-0.0001, verbose=True)
     for epoch in range(opt.niter):
         epoch_start_time = time.time()

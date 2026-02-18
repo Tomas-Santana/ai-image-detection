@@ -2,15 +2,15 @@ import torch
 import numpy as np
 from torch.utils.data.sampler import WeightedRandomSampler
 import collections
-import dataset_train 
-import os
+from .dataset_train import DeepFakeDataset 
+# import os
 
 
 def get_dataset(opt):
     dset_lst = []
     for cls in opt.classes:
         root = opt.dataroot + '/' + cls
-        dset = dataset_train(opt, root)
+        dset = DeepFakeDataset(opt, root)
         dset_lst.append(dset)
     return torch.utils.data.ConcatDataset(dset_lst)
 
@@ -23,17 +23,15 @@ def get_bal_sampler(dataset):
     ratio = np.bincount(targets)
     w = 1. / torch.tensor(ratio, dtype=torch.float)
     sample_weights = w[targets]
-    sampler = WeightedRandomSampler(weights=sample_weights,
+    sampler = WeightedRandomSampler(weights=sample_weights.tolist(),
                                     num_samples=len(sample_weights))
     return sampler
 
 def print_label_distribution(dataset, num):
     length=len(dataset)
     print('>>> Size of dataset:', length)
-    #print(len(dataset[0]))
-    #print(dataset[0][0].shape, dataset[0][1])
-    l=[dataset[np.random.randint(0, length)][1] for _ in range(num)]
-    d=collections.Counter(l)
+    labels=[dataset[np.random.randint(0, length)][1] for _ in range(num)]
+    d=collections.Counter(labels)
     k=sorted(d.keys())
     print('>>> Label distribution for %d random samples in original dataset:    '%(num))
     for i in range(len(k)):
