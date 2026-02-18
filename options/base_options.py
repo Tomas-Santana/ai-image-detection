@@ -2,6 +2,7 @@ import argparse
 import os
 import util
 import torch
+from tap import Tap
 #import models
 #import data
 
@@ -115,3 +116,90 @@ class BaseOptions():
 
         self.opt = opt
         return self.opt
+    
+class TypedBaseOptions(Tap):
+    """Tap-based options with the same flags/behavior as BaseOptions.
+
+    This is intended as a drop-in replacement for the argparse Namespace used
+    throughout the codebase (attributes like opt.isTrain, opt.gpu_ids, etc).
+    """
+
+    # NOTE: keep names aligned with legacy argparse flags.
+    is_train: bool = True
+
+    mode: str = "binary"
+    arch: str = "res50"
+
+    # data augmentation
+    rz_interp: str = "bilinear"
+    blur_prob: float = 0.0
+    blur_sig: str = "0.5"
+    jpg_prob: float = 0.0
+    jpg_method: str = "cv2"
+    jpg_qual: str = "75"
+
+    dataroot: str = "./dataset/"
+    classes: str = ""
+    multiclass: str = ""
+    class_bal: bool = False
+    batch_size: int = 64
+    loadSize: int = 224
+    cropSize: int = 224
+    gpu_ids: str = "0"
+    name: str = ""
+    epoch: str = "latest"
+    num_threads: int = 16
+    checkpoints_dir: str = "./checkpoints"
+    serial_batches: bool = False
+    resize_or_crop: str = "scale_and_crop"
+    no_flip: bool = False
+    init_type: str = "normal"
+    init_gain: float = 0.02
+    suffix: str = ""
+
+    def _user_items(self):
+        items = []
+        for k, v in vars(self).items():
+            if k.startswith("_"):
+                continue
+            items.append((k, v))
+        return items
+
+    def print_options(self):
+        message = ""
+        message += "----------------- Options ---------------\n"
+
+        defaults = type(self)()
+        for k, v in sorted(self._user_items(), key=lambda kv: kv[0]):
+            comment = ""
+            default = getattr(defaults, k, None)
+            if v != default:
+                comment = "\t[default: %s]" % str(default)
+            message += "{:>25}: {:<30}{}\n".format(str(k), str(v), comment)
+        message += "----------------- End -------------------"
+        print(message)
+
+        expr_dir = os.path.join(self.checkpoints_dir, self.name)
+        util.mkdirs(expr_dir)
+        file_name = os.path.join(expr_dir, "opt.txt")
+        with open(file_name, "wt") as opt_file:
+            opt_file.write(message)
+            opt_file.write("\n")
+
+    def parse(self, print_options: bool = True):
+        # Parse CLI into this object.
+        self.parse_args()
+
+        # Match legacy attribute expected by BaseModel/Trainer.
+        self.isTrain = self.is_train
+
+        # process suffix
+        if self.suffix:
+            suffix = ("_" + self.suffix.format(**vars(self))) if self.suffix != "" else ""
+            self.name = self.name + suffix
+
+        # Print/save options BEFORE post-processing to preserve legacy output.
+        if print_options:
+            self.print_options()
+
+        return self
