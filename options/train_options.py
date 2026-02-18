@@ -1,8 +1,9 @@
 from .base_options import BaseOptions
+import argparse
 
 
 class TrainOptions(BaseOptions):
-    def initialize(self, parser):
+    def initialize(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         parser = BaseOptions.initialize(self, parser)
         parser.add_argument('--earlystop_epoch', type=int, default=10)
         parser.add_argument('--data_aug', action='store_true', help='if specified, perform additional data augmentation (photometric, blurring, jpegging)')
@@ -21,5 +22,5 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--lr', type=float, default=0.0001, help='initial learning rate for adam')
         parser.add_argument('--loadpath', type=str, default='/projects/yanju/0ICIP22/11_2b_APSM_AFF_ori/checkpoints/p_trained/model_epoch_best.pth')
 
-        self.isTrain = True
+        self.is_train = True
         return parser

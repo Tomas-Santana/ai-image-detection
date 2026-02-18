@@ -1,7 +1,7 @@
 from typing import Literal, Dict, Optional
 from dataclasses import dataclass
 
-TransformName = Literal["jpeg", "blur"]
+TransformName = Literal["jpeg", "blur", "hflip"]
 
 TransformOpt = Dict[TransformName, float]
 

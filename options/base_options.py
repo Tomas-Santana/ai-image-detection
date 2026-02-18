@@ -7,10 +7,12 @@ import torch
 
 
 class BaseOptions():
+    is_train: bool = True
+    
     def __init__(self):
         self.initialized = False
 
-    def initialize(self, parser):
+    def initialize(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         parser.add_argument('--mode', default='binary')
         parser.add_argument('--arch', type=str, default='res50', help='architecture for binary classification')
 
@@ -43,7 +45,7 @@ class BaseOptions():
         self.initialized = True
         return parser
 
-    def gather_options(self):
+    def gather_options(self) -> argparse.Namespace:
         # initialize parser with basic options
         if not self.initialized:
             parser = argparse.ArgumentParser(
@@ -56,7 +58,7 @@ class BaseOptions():
 
         return parser.parse_args()
 
-    def print_options(self, opt):
+    def print_options(self, opt: argparse.Namespace):
         message = ''
         message += '----------------- Options ---------------\n'
         for k, v in sorted(vars(opt).items()):
@@ -76,10 +78,10 @@ class BaseOptions():
             opt_file.write(message)
             opt_file.write('\n')
 
-    def parse(self, print_options=True):
+    def parse(self, print_options: bool = True) -> argparse.Namespace:
 
         opt = self.gather_options()
-        opt.isTrain = self.isTrain   # train or test
+        opt.isTrain = self.is_train   # train or test
 
         # process opt.suffix
         if opt.suffix:
