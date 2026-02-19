@@ -1,11 +1,11 @@
+from typing import Optional
+from typing import List
+from typing import Literal
 import argparse
 import os
 import util
 import torch
 from tap import Tap
-#import models
-#import data
-
 
 class BaseOptions():
     is_train: bool = True
@@ -48,7 +48,9 @@ class BaseOptions():
 
     def gather_options(self) -> argparse.Namespace:
         # initialize parser with basic options
-        if not self.initialized:
+        if self.initialized:
+            parser = self.parser
+        else:
             parser = argparse.ArgumentParser(
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
             parser = self.initialize(parser)
@@ -127,79 +129,39 @@ class TypedBaseOptions(Tap):
     # NOTE: keep names aligned with legacy argparse flags.
     is_train: bool = True
 
-    mode: str = "binary"
-    arch: str = "res50"
+    arch: Literal['clip', 'rn50'] = "clip" # Backbone architecture for the global branch
 
-    # data augmentation
-    rz_interp: str = "bilinear"
-    blur_prob: float = 0.0
-    blur_sig: str = "0.5"
-    jpg_prob: float = 0.0
-    jpg_method: str = "cv2"
-    jpg_qual: str = "75"
+    # Data options
+    models: List[str] # GenImage models to train on
+    dataroot: str = "./data" # Path to dataset root, which should have subfolders for each model (e.g. ./data/imagenet_ai_0508_adm). Can also be a gcs path (e.g. gs://my-bucket/data) if using --gcp_project_name
+    jpeg_p: float = 0.5 # Probability of applying JPEG compression
+    blur_p: float = 0.5 # Probability of applying blur
+    hflip_p: float = 0.0 # Probability of applying horizontal flip
+    blur_sigma: tuple[float, float] = (0.1, 2.0) #  Range for blur sigma when applying blur
+    jpeg_qual: tuple[int, int] = (10, 50) # Range for JPEG quality when applying JPEG compression
+    batch_size: int = 32 # Batch size for training
+    workers: int = 4 # Number of worker processes for data loading
+    gcp_project_name: Optional[str] = None # GCP project name for loading data from GCS (Can be None, in which case will load from local filesystem)
+    load_size: int = 256 # Size to scale images to before cropping
+    crop_size: int = 224 # Size to crop images to for the global branch during training
+    
+    experiment_name: str = "" # Name of the experiment, used for saving checkpoints and logs
+    checkpoints_dir: str = "./checkpoints" # Directory to save checkpoints and logs. Can be a gcs path (e.g. gs://my-bucket/checkpoints) if using --gcp_project_name
+    fs: Literal['local', 'gcs'] = "local" # Whether to load/save data from the local filesystem or Google Cloud Storage (GCS). It will be inferred from the presence of gcp_project_name and the format of dataroot/checkpoints_dir.
+    
+    def process_args(self):
+        if self.gcp_project_name is not None:
+            self.fs = 'gcs'
+        else:
+            self.fs = 'local'
+            if self.dataroot.startswith('gs://') or self.checkpoints_dir.startswith('gs://'):
+                raise ValueError("When --gcp_project_name is not set, dataroot and checkpoints_dir should be local paths, not gcs paths (e.g. ./data, not gs://my-bucket/data)")
+        if self.fs == 'gcs':
+            if not self.dataroot.startswith('gs://'):
+                raise ValueError("When using --gcp_project_name, dataroot should be a gcs path (e.g. gs://my-bucket/data)")
+            if not self.checkpoints_dir.startswith('gs://'):
+                raise ValueError("When using --gcp_project_name, checkpoints_dir should be a gcs path (e.g. gs://my-bucket/checkpoints)")
 
-    dataroot: str = "./dataset/"
-    classes: str = ""
-    multiclass: str = ""
-    class_bal: bool = False
-    batch_size: int = 64
-    loadSize: int = 224
-    cropSize: int = 224
-    gpu_ids: str = "0"
-    name: str = ""
-    epoch: str = "latest"
-    num_threads: int = 16
-    checkpoints_dir: str = "./checkpoints"
-    serial_batches: bool = False
-    resize_or_crop: str = "scale_and_crop"
-    no_flip: bool = False
-    init_type: str = "normal"
-    init_gain: float = 0.02
-    suffix: str = ""
+        
+    
 
-    def _user_items(self):
-        items = []
-        for k, v in vars(self).items():
-            if k.startswith("_"):
-                continue
-            items.append((k, v))
-        return items
-
-    def print_options(self):
-        message = ""
-        message += "----------------- Options ---------------\n"
-
-        defaults = type(self)()
-        for k, v in sorted(self._user_items(), key=lambda kv: kv[0]):
-            comment = ""
-            default = getattr(defaults, k, None)
-            if v != default:
-                comment = "\t[default: %s]" % str(default)
-            message += "{:>25}: {:<30}{}\n".format(str(k), str(v), comment)
-        message += "----------------- End -------------------"
-        print(message)
-
-        expr_dir = os.path.join(self.checkpoints_dir, self.name)
-        util.mkdirs(expr_dir)
-        file_name = os.path.join(expr_dir, "opt.txt")
-        with open(file_name, "wt") as opt_file:
-            opt_file.write(message)
-            opt_file.write("\n")
-
-    def parse(self, print_options: bool = True):
-        # Parse CLI into this object.
-        self.parse_args()
-
-        # Match legacy attribute expected by BaseModel/Trainer.
-        self.isTrain = self.is_train
-
-        # process suffix
-        if self.suffix:
-            suffix = ("_" + self.suffix.format(**vars(self))) if self.suffix != "" else ""
-            self.name = self.name + suffix
-
-        # Print/save options BEFORE post-processing to preserve legacy output.
-        if print_options:
-            self.print_options()
-
-        return self

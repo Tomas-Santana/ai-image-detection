@@ -1,4 +1,5 @@
-from .base_options import BaseOptions
+from typing import Literal
+from .base_options import BaseOptions, TypedBaseOptions
 import argparse
 
 
@@ -24,3 +25,14 @@ class TrainOptions(BaseOptions):
 
         self.is_train = True
         return parser
+    
+class TypedTrainOptions(TypedBaseOptions):
+    model_path: str # Path to a checkpoint to load for training (e.g. for fine-tuning or resuming training). Can be a gcs path (e.g. gs://my-bucket/checkpoints/model_epoch_best.pth) if using --gcp_project_name
+    is_train: bool = True
+    earlystop_epoch: int = 10 # number of epochs to wait for improvement before early stopping
+    checkpoint_freq: int = 5 # frequency of saving checkpoints (in epochs)
+    lr: float = 0.0001 # learning rate for the optimizer
+    optim: Literal['sgd', 'adam'] = 'adam' # optimizer to use
+    
+
+    
