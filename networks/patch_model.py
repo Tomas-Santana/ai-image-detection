@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networks.clip import CLIPResNet
-from networks.layers import SA_layer, MultiLevelFusion
+from networks.layers import MultiLevelFusion
 from networks.cooi import COOI
 
 
@@ -12,9 +12,17 @@ class Patch5Model(nn.Module):
         self.clip = CLIPResNet(model_name="RN50", frozen=True)  # debug
         self.mid_dims = 128
         self.COOI = COOI()
-        self.mha_list = nn.Sequential(
-            SA_layer(128, 4), SA_layer(128, 4), SA_layer(128, 4)
+        
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=128,
+            nhead=4,
+            dim_feedforward=128,
+            dropout=0.0,
+            activation="relu",
+            batch_first=True,
         )
+        self.mha_list = nn.TransformerEncoder(encoder_layer, num_layers=3)
+        
         self.fc1 = nn.Linear(2048, 128)
         self.ac = nn.ReLU()
         self.fc = nn.Linear(128, 1)

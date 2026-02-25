@@ -2,30 +2,6 @@ import torch
 import torch.nn as nn
 
 
-class SA_layer(nn.Module):
-    def __init__(self, dim: int = 128, head_size: int = 4):
-        super(SA_layer, self).__init__()
-        self.mha = nn.MultiheadAttention(dim, head_size)
-        self.ln1 = nn.LayerNorm(dim)
-        self.fc1 = nn.Linear(dim, dim)
-        self.ac = nn.ReLU()
-        self.fc2 = nn.Linear(dim, dim)
-        self.ln2 = nn.LayerNorm(dim)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: [batch_size, len_size, fea_dim]
-        batch_size, len_size, fea_dim = x.shape
-        x = torch.transpose(x, 1, 0)
-        y, _ = self.mha(x, x, x)
-        x = self.ln1(x + y)
-        x = torch.transpose(x, 1, 0)
-        x = x.reshape(batch_size * len_size, fea_dim)
-        x = x + self.fc2(self.ac(self.fc1(x)))
-        x = x.reshape(batch_size, len_size, fea_dim)
-        x = self.ln2(x)
-        return x
-
-
 class MultiLevelFusion(nn.Module):
     def __init__(self, mid_dim: int = 128):
         super(MultiLevelFusion, self).__init__()
@@ -34,9 +10,15 @@ class MultiLevelFusion(nn.Module):
         self.project_shallow = nn.Linear(64, mid_dim)
         self.project_middle = nn.Linear(512, mid_dim)
 
-        self.mha_list = nn.Sequential(
-            SA_layer(mid_dim, 4), SA_layer(mid_dim, 4), SA_layer(mid_dim, 4)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=mid_dim,
+            nhead=4,
+            dim_feedforward=mid_dim,
+            dropout=0.0,
+            activation="relu",
+            batch_first=True,
         )
+        self.mha_list = nn.TransformerEncoder(encoder_layer, num_layers=3)
 
     def forward(
         self, shallow_layers: torch.Tensor, high_layers: torch.Tensor
