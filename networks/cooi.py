@@ -20,6 +20,10 @@ class COOI:  # Coordinates On Original Image
     def get_coordinates(
         self, fm: torch.Tensor, scale: torch.Tensor
     ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        """
+        fm: feature map from the backbone, shape [B, C, H, W]
+        scale: original image size, shape [B, 2]
+        """
         with torch.no_grad():
             batch_size, _, fm_height, fm_width = fm.size()
             scale_min = torch.min(scale, dim=1, keepdim=True)[0].long()
