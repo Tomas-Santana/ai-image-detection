@@ -12,6 +12,13 @@ IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
+def _join_data_path(root: str, *parts: str) -> str:
+    clean_parts = [part.strip("/\\") for part in parts if part]
+    if root.startswith("gs://"):
+        return "/".join([root.rstrip("/"), *clean_parts])
+    return os.path.join(root, *clean_parts)
+
+
 class Processor:
     """
     Returns:
@@ -95,7 +102,7 @@ def patch_collate_train(batch):
 
 
 def patch_collate_test(batch):
-    input_img = [item[0] for item in batch]
+    input_img = torch.stack([item[0] for item in batch], dim=0)
     cropped_img = torch.stack([item[1] for item in batch], dim=0)
     target = torch.tensor([item[2] for item in batch])
     scale = torch.stack([item[3] for item in batch], dim=0)
@@ -159,14 +166,15 @@ class GenImageDataset(Dataset):
 
 
 def load_dataflux_mapstyle_dataset(
+    model_path: str,
     opt: DatasetOptions,
     *,
     train: bool = True,
     input_size: int = 256,
     crop_size: int = 224,
 ) -> dataflux_mapstyle_dataset.DataFluxMapStyleDataset:
-    bucket_name = opt.dataroot.replace("gs://", "").split("/")[0]
-    prefix = "/".join(opt.dataroot.replace("gs://", "").split("/")[1:])
+    bucket_name = model_path.replace("gs://", "").split("/")[0]
+    prefix = "/".join(model_path.replace("gs://", "").split("/")[1:])
 
     processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
 
@@ -194,7 +202,11 @@ def load_dataset(
 ) -> Dataset:
     if model_path.startswith("gs://"):
         return load_dataflux_mapstyle_dataset(
-            opt, train=train, input_size=input_size, crop_size=crop_size
+            model_path,
+            opt,
+            train=train,
+            input_size=input_size,
+            crop_size=crop_size,
         )
     return GenImageDataset(
         model_path, opt, train=train, input_size=input_size, crop_size=crop_size
@@ -207,6 +219,7 @@ def get_loader(
     train: bool = True,
     input_size: int = 256,
     crop_size: int = 224,
+    include_filenames: bool = False,
 ) -> DataLoader:
     """
     Each batch item is:
@@ -219,7 +232,7 @@ def get_loader(
 
     datasets: list[Dataset] = []
     for model in opt.models:
-        model_path = os.path.join(opt.dataroot, model)
+        model_path = _join_data_path(opt.dataroot, model, opt.split)
         datasets.append(
             load_dataset(
                 model_path,
@@ -235,7 +248,7 @@ def get_loader(
         dataset,
         batch_size=opt.batch_size,
         shuffle=train,
-        collate_fn=patch_collate_train if train else patch_collate_test,
+        collate_fn=patch_collate_test if include_filenames else patch_collate_train,
         num_workers=opt.workers,
         pin_memory=True,
     )

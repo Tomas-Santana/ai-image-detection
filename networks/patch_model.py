@@ -72,7 +72,7 @@ class Patch5Model(nn.Module):
 
         window_imgs = window_imgs.reshape(
             batch_size * proposal_size, 3, 224, 224
-        )  # [B * proposal_size, 3, 224, 224]
+        ).to(fused_global_maps.device)  # [B * proposal_size, 3, 224, 224]
         _, _, local_maps = self.clip(
             window_imgs.detach()
         )  # [B * proposal_size, 2048, 7, 7]

@@ -23,9 +23,9 @@ class CLIPResNet(nn.Module):
                 param.requires_grad = True
 
     def stem_no_pool(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.visual.relu1(self.visual.bn1(self.visual.conv1(x)))  # type:ignore
-        x = self.visual.relu2(self.visual.bn2(self.visual.conv2(x)))  # type:ignore
-        x = self.visual.relu3(self.visual.bn3(self.visual.conv3(x)))  # type:ignore
+        x = self.visual.act1(self.visual.bn1(self.visual.conv1(x)))  # type:ignore
+        x = self.visual.act2(self.visual.bn2(self.visual.conv2(x)))  # type:ignore
+        x = self.visual.act3(self.visual.bn3(self.visual.conv3(x)))  # type:ignore
         return x
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

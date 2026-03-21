@@ -1,6 +1,7 @@
 from typing import Optional
 from typing import List
 from typing import Literal
+from .data_options import DatasetOptions, Models
 import argparse
 import os
 import util
@@ -128,12 +129,13 @@ class TypedBaseOptions(Tap):
 
     # NOTE: keep names aligned with legacy argparse flags.
     is_train: bool = True
+    gpu_ids: list[int] = [0]
 
     arch: Literal['clip', 'rn50'] = "clip" # Backbone architecture for the global branch
 
     # Data options
-    models: List[str] # GenImage models to train on
-    dataroot: str = "./data" # Path to dataset root, which should have subfolders for each model (e.g. ./data/imagenet_ai_0508_adm). Can also be a gcs path (e.g. gs://my-bucket/data) if using --gcp_project_name
+    models: List[Models] # GenImage models to train on
+    dataroot: str = "./DATAROOT" # Path to dataset root, which should have subfolders for each model (e.g. ./DATAROOT/imagenet_ai_0508_adm). Can also be a gcs path (e.g. gs://my-bucket/data) if using --gcp_project_name
     jpeg_p: float = 0.5 # Probability of applying JPEG compression
     blur_p: float = 0.5 # Probability of applying blur
     hflip_p: float = 0.0 # Probability of applying horizontal flip
@@ -162,6 +164,31 @@ class TypedBaseOptions(Tap):
             if not self.checkpoints_dir.startswith('gs://'):
                 raise ValueError("When using --gcp_project_name, checkpoints_dir should be a gcs path (e.g. gs://my-bucket/checkpoints)")
 
+        if self.gpu_ids == [-1] or not torch.cuda.is_available():
+            self.gpu_ids = []
+        else:
+            torch.cuda.set_device(self.gpu_ids[0])
+
+    def get_dataset_options(self, split: str = "train") -> DatasetOptions:
+        return DatasetOptions(
+            models=self.models,
+            dataroot=self.dataroot,
+            split=split,
+            transforms={
+                "jpeg": self.jpeg_p,
+                "blur": self.blur_p,
+                "hflip": self.hflip_p,
+            },
+            blur_sigma=self.blur_sigma,
+            jpeg_quality=self.jpeg_qual,
+            batch_size=self.batch_size,
+            workers=self.workers,
+            gcp_project_name=self.gcp_project_name,
+        )
+        
+    @property
+    def dataset_options(self) -> DatasetOptions:
+        return self.get_dataset_options()
         
     
 

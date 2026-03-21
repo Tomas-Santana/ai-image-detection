@@ -3,16 +3,17 @@ import os
 import torch
 import torch.nn as nn
 from torch.nn import init
-from torch.optim import lr_scheduler
 
 
 class BaseModel(nn.Module):
+    model: nn.Module
+    optimizer: torch.optim.Optimizer
     def __init__(self, opt):
         super(BaseModel, self).__init__()
         self.opt = opt
         self.total_steps = 0
-        self.isTrain = opt.isTrain
-        self.save_dir = os.path.join(opt.checkpoints_dir, opt.name)
+        self.is_train = opt.is_train
+        self.save_dir = os.path.join(opt.checkpoints_dir, opt.experiment_name)
         self.device = torch.device('cuda:{}'.format(opt.gpu_ids[0])) if opt.gpu_ids else torch.device('cpu')
 
     def save_networks(self, epoch):
@@ -42,7 +43,6 @@ class BaseModel(nn.Module):
 
         from collections import OrderedDict
         new_state_dict = {}
-        values = state_dict['model']
         for k,v in state_dict.items():
             if isinstance(v, OrderedDict):
                 newdict = OrderedDict([(k[7:], v) if k[:7] == 'module.' else (k, v) for k, v in v.items()])
@@ -53,7 +53,7 @@ class BaseModel(nn.Module):
         self.model.load_state_dict(new_state_dict['model'])
         self.total_steps = new_state_dict['total_steps']
 
-        if self.isTrain and not self.opt.new_optim:
+        if self.is_train and not self.opt.new_optim:
             self.optimizer.load_state_dict(new_state_dict['optimizer'])
             ### move optimizer state to GPU
             for state in self.optimizer.state.values():
@@ -65,7 +65,7 @@ class BaseModel(nn.Module):
                 g['lr'] = self.opt.lr
 
     def eval(self):
-        self.model.eval()
+        return self.model.eval()
 
     def test(self):
         with torch.no_grad():

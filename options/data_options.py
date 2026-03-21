@@ -1,5 +1,5 @@
 from typing import Literal, Dict, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 TransformName = Literal["jpeg", "blur", "hflip"]
 
@@ -19,8 +19,11 @@ Models = Literal[
 @dataclass
 class DatasetOptions:
     models: list[Models]
-    dataroot: str = "./data"
-    transforms: TransformOpt = {"jpeg": 0.5, "blur": 0.3}
+    dataroot: str = "./DATAROOT"
+    split: str = "train"
+    transforms: TransformOpt = field(
+        default_factory=lambda: {"jpeg": 0.5, "blur": 0.3, "hflip": 0.0}
+    )
     blur_sigma: tuple[float, float] = (0.1, 2.0)
     jpeg_quality: tuple[int, int] = (10, 50)
     batch_size: int = 32

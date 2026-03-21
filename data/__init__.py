@@ -2,11 +2,12 @@ import torch
 import numpy as np
 from torch.utils.data.sampler import WeightedRandomSampler
 import collections
-from .dataset_train import DeepFakeDataset 
 # import os
 
 
 def get_dataset(opt):
+    from .dataset_train import DeepFakeDataset
+
     dset_lst = []
     for cls in opt.classes:
         root = opt.dataroot + '/' + cls

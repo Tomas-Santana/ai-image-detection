@@ -11,7 +11,7 @@ class Trainer(BaseModel):
     def __init__(self, opt):
         super(Trainer, self).__init__(opt)
 
-        if self.isTrain and not opt.continue_train:
+        if self.is_train and not opt.continue_train:
             self.model = Patch5Model()
             if torch.cuda.device_count() > 1:
                 self.model = nn.DataParallel(self.model)
@@ -19,7 +19,7 @@ class Trainer(BaseModel):
         if opt.continue_train:
             self.model = Patch5Model()
 
-        if self.isTrain:
+        if self.is_train:
             self.loss_fn = nn.BCEWithLogitsLoss()
             if opt.optim == "adam":
                 self.optimizer = torch.optim.Adam(
@@ -32,9 +32,9 @@ class Trainer(BaseModel):
             else:
                 raise ValueError("optim should be [adam, sgd]")
 
-        if self.isTrain and opt.continue_train:
-            print(opt.loadpath)
-            self.load_networks(opt.loadpath)
+        if self.is_train and opt.continue_train:
+            print(opt.model_path)
+            self.load_networks(opt.model_path)
             if torch.cuda.device_count() > 1:
                 self.model = nn.DataParallel(self.model)
 
