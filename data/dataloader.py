@@ -6,6 +6,7 @@ from options.data_options import DatasetOptions
 from PIL import Image
 from io import BytesIO
 from dataflux_pytorch import dataflux_mapstyle_dataset
+from azstoragetorch.datasets import BlobDataset, Blob
 
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -14,7 +15,7 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 def _join_data_path(root: str, *parts: str) -> str:
     clean_parts = [part.strip("/\\") for part in parts if part]
-    if root.startswith("gs://"):
+    if root.startswith("gs://") or root.startswith("az://"):
         return "/".join([root.rstrip("/"), *clean_parts])
     return os.path.join(root, *clean_parts)
 
@@ -165,6 +166,44 @@ class GenImageDataset(Dataset):
         return self.image_len
 
 
+def load_azstoragetorch_blob_dataset(
+    model_path: str,
+    opt: DatasetOptions,
+    *,
+    train: bool = True,
+    input_size: int = 256,
+    crop_size: int = 224,
+) -> BlobDataset:
+    # model_path format: az://<container>/<prefix>
+    # opt.azure_storage_account_url format: https://<account>.blob.core.windows.net
+    path = model_path[len("az://"):]
+    parts = path.split("/", 1)
+    container_name = parts[0]
+    if not container_name:
+        raise ValueError(f"Invalid Azure path '{model_path}': container name must not be empty (expected format: az://<container>/<prefix>)")
+    prefix = parts[1] if len(parts) > 1 else ""
+
+    account_url = opt.azure_storage_account_url
+    container_url = f"{account_url.rstrip('/')}/{container_name}"
+
+    processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
+
+    def transform_fn(blob: Blob):
+        with blob.reader() as f:
+            bytes_content = f.read()
+        img: Image.Image = Image.open(BytesIO(bytes_content)).convert("RGB")
+        blob_name = blob.blob_name
+        label = 1 if "nature" in blob_name else 0
+        input_img, cropped_img, scale = processor(img)
+        return input_img, cropped_img, int(label), scale, blob_name
+
+    return BlobDataset.from_container_url(
+        container_url,
+        prefix=prefix if prefix else None,
+        transform=transform_fn,
+    )
+
+
 def load_dataflux_mapstyle_dataset(
     model_path: str,
     opt: DatasetOptions,
@@ -202,6 +241,14 @@ def load_dataset(
 ) -> Dataset:
     if model_path.startswith("gs://"):
         return load_dataflux_mapstyle_dataset(
+            model_path,
+            opt,
+            train=train,
+            input_size=input_size,
+            crop_size=crop_size,
+        )
+    if model_path.startswith("az://"):
+        return load_azstoragetorch_blob_dataset(
             model_path,
             opt,
             train=train,
