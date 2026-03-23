@@ -5,7 +5,7 @@ from tensorboardX import SummaryWriter
 import numpy as np
 from earlystop import EarlyStopping
 from networks.trainer import Trainer
-from options.train_options import TypedTrainOptions
+from options.train_options import TrainOptions
 from data.dataloader import get_loader
 from sklearn.metrics import average_precision_score, accuracy_score, roc_curve, auc
 from tqdm import tqdm
@@ -34,7 +34,7 @@ def validate(model, data_loader):
 
 
 if __name__ == '__main__':
-    opt = TypedTrainOptions().parse_args()
+    opt = TrainOptions().parse_args()
     train_loader = get_loader(
         opt.train_dataset_options,
         train=True,
