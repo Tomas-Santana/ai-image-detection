@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "azstoragetorch>=0.2.0",
+    "azure-identity>=1.25.3",
+    "azure-storage-blob>=12.27.0",
     "gcs-torch-dataflux>=1.4.0",
     "matplotlib>=3.10.8",
     "open-clip-torch>=3.2.0",
