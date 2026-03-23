@@ -135,7 +135,7 @@ class TypedBaseOptions(Tap):
 
     # Data options
     models: List[Models] # GenImage models to train on
-    dataroot: str = "./DATAROOT" # Path to dataset root, which should have subfolders for each model (e.g. ./DATAROOT/imagenet_ai_0508_adm). Can also be a gcs path (e.g. gs://my-bucket/data) if using --gcp_project_name
+    dataroot: str = "./DATAROOT" # Path to dataset root, which should have subfolders for each model (e.g. ./DATAROOT/imagenet_ai_0508_adm). Can also be a gcs path (gs://my-bucket/data) or Azure container URL root (https://<account>.blob.core.windows.net/<container>/<optional-prefix>)
     jpeg_p: float = 0.5 # Probability of applying JPEG compression
     blur_p: float = 0.5 # Probability of applying blur
     hflip_p: float = 0.0 # Probability of applying horizontal flip
@@ -149,20 +149,29 @@ class TypedBaseOptions(Tap):
     
     experiment_name: str = "" # Name of the experiment, used for saving checkpoints and logs
     checkpoints_dir: str = "./checkpoints" # Directory to save checkpoints and logs. Can be a gcs path (e.g. gs://my-bucket/checkpoints) if using --gcp_project_name
-    fs: Literal['local', 'gcs'] = "local" # Whether to load/save data from the local filesystem or Google Cloud Storage (GCS). It will be inferred from the presence of gcp_project_name and the format of dataroot/checkpoints_dir.
+    fs: Literal['local', 'gcs', 'azure'] = "local" # Whether to load/save data from the local filesystem, Google Cloud Storage (GCS), or Azure Blob Storage. It is inferred from gcp_project_name and dataroot format.
     
     def process_args(self):
         if self.gcp_project_name is not None:
             self.fs = 'gcs'
+        elif self.dataroot.startswith('https://') or self.dataroot.startswith('http://'):
+            self.fs = 'azure'
         else:
             self.fs = 'local'
             if self.dataroot.startswith('gs://') or self.checkpoints_dir.startswith('gs://'):
                 raise ValueError("When --gcp_project_name is not set, dataroot and checkpoints_dir should be local paths, not gcs paths (e.g. ./data, not gs://my-bucket/data)")
+            if self.dataroot.startswith('az://') or self.checkpoints_dir.startswith('az://'):
+                raise ValueError("For Azure, set dataroot to a full container URL (e.g. https://<account>.blob.core.windows.net/<container>/<optional-prefix>) instead of az:// paths")
         if self.fs == 'gcs':
             if not self.dataroot.startswith('gs://'):
                 raise ValueError("When using --gcp_project_name, dataroot should be a gcs path (e.g. gs://my-bucket/data)")
             if not self.checkpoints_dir.startswith('gs://'):
                 raise ValueError("When using --gcp_project_name, checkpoints_dir should be a gcs path (e.g. gs://my-bucket/checkpoints)")
+        if self.fs == 'azure':
+            if not (self.dataroot.startswith('https://') or self.dataroot.startswith('http://')):
+                raise ValueError("When using Azure Blob Storage, dataroot should be a full container URL (e.g. https://<account>.blob.core.windows.net/<container>/<optional-prefix>)")
+            if self.checkpoints_dir.startswith('gs://') or self.checkpoints_dir.startswith('az://'):
+                raise ValueError("When using Azure Blob Storage, checkpoints_dir should be a local path (e.g. ./checkpoints)")
 
         if self.gpu_ids == [-1] or not torch.cuda.is_available():
             self.gpu_ids = []
