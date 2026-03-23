@@ -1,14 +1,20 @@
 from .base_options import BaseOptions
-import argparse
-
+from .data_options import DatasetOptions
 
 class TestOptions(BaseOptions):
-    def initialize(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-        parser = BaseOptions.initialize(self, parser)
-        parser.add_argument('--model_path')
-        parser.add_argument('--no_resize', action='store_true')
-        parser.add_argument('--no_crop', action='store_true')
-        parser.add_argument('--eval', action='store_true', help='use eval mode during test time.')
+    model_path: str = "" # Path to model checkpoint used for evaluation
+    is_train: bool = False
+    test_split: str = 'val' # Dataset split to use for evaluation
+    results_dir: str = './results' # Folder where evaluation csv results are stored (local path or Azure Blob URL prefix)
+    no_resize: bool = False
+    no_crop: bool = False
+    eval: bool = True
 
-        self.is_train = False
-        return parser
+    def process_args(self):
+        super().process_args()
+        if not self.model_path:
+            raise ValueError("--model_path must be provided for testing")
+
+    @property
+    def test_dataset_options(self) -> DatasetOptions:
+        return self.get_dataset_options(split=self.test_split)
