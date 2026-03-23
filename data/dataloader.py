@@ -5,6 +5,7 @@ import os
 from options.data_options import DatasetOptions
 from PIL import Image
 from io import BytesIO
+from urllib.parse import urlsplit
 from dataflux_pytorch import dataflux_mapstyle_dataset
 from azstoragetorch.datasets import BlobDataset, Blob
 
@@ -15,7 +16,7 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 def _join_data_path(root: str, *parts: str) -> str:
     clean_parts = [part.strip("/\\") for part in parts if part]
-    if root.startswith("gs://") or root.startswith("az://"):
+    if root.startswith("gs://") or root.startswith("az://") or root.startswith("https://") or root.startswith("http://"):
         return "/".join([root.rstrip("/"), *clean_parts])
     return os.path.join(root, *clean_parts)
 
@@ -174,17 +175,21 @@ def load_azstoragetorch_blob_dataset(
     input_size: int = 256,
     crop_size: int = 224,
 ) -> BlobDataset:
-    # model_path format: az://<container>/<prefix>
-    # opt.azure_storage_account_url format: https://<account>.blob.core.windows.net
-    path = model_path[len("az://"):]
-    parts = path.split("/", 1)
-    container_name = parts[0]
-    if not container_name:
-        raise ValueError(f"Invalid Azure path '{model_path}': container name must not be empty (expected format: az://<container>/<prefix>)")
-    prefix = parts[1] if len(parts) > 1 else ""
+    # model_path format: https://<account>.blob.core.windows.net/<container>/<prefix>
+    parsed = urlsplit(model_path)
+    if parsed.scheme not in {"https", "http"}:
+        raise ValueError(
+            f"Invalid Azure model path '{model_path}': expected full container URL path with https://<account>.blob.core.windows.net/<container>/<prefix>"
+        )
+    path_parts = [p for p in parsed.path.split("/") if p]
+    if not path_parts:
+        raise ValueError(
+            f"Invalid Azure model path '{model_path}': container name must not be empty"
+        )
+    container_name = path_parts[0]
+    prefix = "/".join(path_parts[1:])
 
-    account_url = opt.azure_storage_account_url
-    container_url = f"{account_url.rstrip('/')}/{container_name}"
+    container_url = f"{parsed.scheme}://{parsed.netloc}/{container_name}"
 
     processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
 
@@ -200,7 +205,7 @@ def load_azstoragetorch_blob_dataset(
     return BlobDataset.from_container_url(
         container_url,
         prefix=prefix if prefix else None,
-        transform=transform_fn,
+        transform=transform_fn, # pyright: ignore[reportArgumentType]
     )
 
 
@@ -247,7 +252,7 @@ def load_dataset(
             input_size=input_size,
             crop_size=crop_size,
         )
-    if model_path.startswith("az://"):
+    if model_path.startswith("https://") or model_path.startswith("http://"):
         return load_azstoragetorch_blob_dataset(
             model_path,
             opt,
