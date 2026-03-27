@@ -797,6 +797,8 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "azstoragetorch" },
+    { name = "azure-identity" },
+    { name = "azure-storage-blob" },
     { name = "gcs-torch-dataflux" },
     { name = "matplotlib" },
     { name = "open-clip-torch" },
@@ -811,6 +813,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "azstoragetorch", specifier = ">=0.2.0" },
+    { name = "azure-identity", specifier = ">=1.25.3" },
+    { name = "azure-storage-blob", specifier = ">=12.27.0" },
     { name = "gcs-torch-dataflux", specifier = ">=1.4.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "open-clip-torch", specifier = ">=3.2.0" },
