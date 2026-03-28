@@ -2,6 +2,8 @@
 .ruff_cache
 __pycache__
 DATAROOT/
+DATAROOT_WDS/
+.env
 tiny_genimage/
 *.png
 *.jpg
