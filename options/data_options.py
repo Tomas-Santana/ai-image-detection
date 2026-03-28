@@ -29,3 +29,4 @@ class DatasetOptions:
     batch_size: int = 32
     workers: int = 4
     gcp_project_name: Optional[str] = None
+    use_wds: bool = False

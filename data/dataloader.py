@@ -2,12 +2,16 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 from torchvision.transforms import v2
 import os
+import glob
+import urllib.request
+import xml.etree.ElementTree as ET
 from options.data_options import DatasetOptions
 from PIL import Image
 from io import BytesIO
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from dataflux_pytorch import dataflux_mapstyle_dataset
 from azstoragetorch.datasets import BlobDataset, Blob
+import webdataset as wds
 
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -265,6 +269,87 @@ def load_dataset(
     )
 
 
+def _list_azure_wds_shards(dataroot_url: str, model: str, split_name: str) -> list[str]:
+    parsed = urlsplit(dataroot_url)
+    path_parts = [p for p in parsed.path.split("/") if p]
+    if not path_parts:
+        return []
+
+    container_name = path_parts[0]
+    base_prefix = "/".join(path_parts[1:]).strip("/")
+    prefix_parts = [part for part in [base_prefix, model, f"{split_name}-"] if part]
+    blob_prefix = "/".join(prefix_parts)
+
+    sas_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    marker = ""
+    shard_urls: list[str] = []
+
+    while True:
+        query_pairs: list[tuple[str, str]] = [
+            ("restype", "container"),
+            ("comp", "list"),
+            ("prefix", blob_prefix),
+        ]
+        if marker:
+            query_pairs.append(("marker", marker))
+        query_pairs.extend(sas_pairs)
+
+        list_url = urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                f"/{container_name}",
+                urlencode(query_pairs),
+                "",
+            )
+        )
+
+        with urllib.request.urlopen(list_url, timeout=30) as response:
+            payload = response.read()
+
+        root = ET.fromstring(payload)
+        for name_node in root.findall(".//{*}Blob/{*}Name"):
+            blob_name = name_node.text or ""
+            if not blob_name.endswith(".tar"):
+                continue
+            blob_url = urlunsplit(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    f"/{container_name}/{blob_name}",
+                    parsed.query,
+                    parsed.fragment,
+                )
+            )
+            shard_urls.append(blob_url)
+
+        marker = root.findtext(".//{*}NextMarker") or ""
+        if not marker:
+            break
+
+    return sorted(shard_urls)
+
+
+def is_not_none(x):
+    return x is not None
+
+class WDSDecoder:
+    def __init__(self, processor):
+        self.processor = processor
+
+    def __call__(self, sample):
+        key = sample.get("__key__", "")
+        img_pil = sample.get("jpg") or sample.get("png")
+        label_int = sample.get("cls")
+        if img_pil is None or label_int is None:
+            return None
+        try:
+            label_int = int(label_int)
+        except (ValueError, TypeError):
+            pass
+        input_img, cropped_img, scale = self.processor(img_pil)
+        return input_img, cropped_img, label_int, scale, key
+
 def get_loader(
     opt: DatasetOptions,
     *,
@@ -281,6 +366,45 @@ def get_loader(
       scale:      [2] tensor (H, W) matching input_img
       img_name:   string path
     """
+
+    if getattr(opt, "use_wds", False):
+        urls = []
+        split_name = "train" if train else "val"
+        for model in opt.models:
+            if opt.dataroot.startswith("https://") or opt.dataroot.startswith("http://"):
+                urls.extend(_list_azure_wds_shards(opt.dataroot, model, split_name))
+            else:
+                search_pattern = _join_data_path(opt.dataroot, model, f"{split_name}-*.tar")
+                sorted_matched_files = sorted(glob.glob(search_pattern))
+                urls.extend(sorted_matched_files)
+
+        if not urls:
+            raise ValueError(
+                f"No WebDataset shards found for split '{split_name}'. Check dataroot, models, and SAS permissions."
+            )
+        
+        processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
+        decoder = WDSDecoder(processor)
+        loader_workers = min(max(1, opt.workers), len(urls))
+
+        dataset = wds.WebDataset( # type: ignore
+            urls,
+            nodesplitter=wds.split_by_node, # type: ignore
+            shardshuffle=1000 if train else False,
+            handler=wds.ignore_and_continue, # type: ignore
+            empty_check=False,
+        ) # type: ignore
+        if train:
+            dataset = dataset.shuffle(1000)
+
+        dataset = dataset.decode("pil", handler=wds.ignore_and_continue).map(decoder, handler=wds.ignore_and_continue).select(is_not_none) # type: ignore
+        return DataLoader(
+            dataset,
+            batch_size=opt.batch_size,
+            num_workers=loader_workers,
+            pin_memory=True,
+            collate_fn=patch_collate_test if include_filenames else patch_collate_train,
+        )
 
     datasets: list[Dataset] = []
     for model in opt.models:

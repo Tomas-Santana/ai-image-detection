@@ -31,6 +31,7 @@ class BaseOptions(Tap):
     experiment_name: str = "" # Name of the experiment, used for saving checkpoints and logs
     checkpoints_dir: str = "./checkpoints" # Directory to save checkpoints and logs. Can be a gcs path (e.g. gs://my-bucket/checkpoints) if using --gcp_project_name
     fs: Literal['local', 'gcs', 'azure'] = "local" # Whether to load/save data from the local filesystem, Google Cloud Storage (GCS), or Azure Blob Storage. It is inferred from gcp_project_name and dataroot format.
+    use_wds: bool = False # Use WebDataset
     
     def process_args(self):
         if self.gcp_project_name is not None:
@@ -74,6 +75,7 @@ class BaseOptions(Tap):
             batch_size=self.batch_size,
             workers=self.workers,
             gcp_project_name=self.gcp_project_name,
+            use_wds=self.use_wds,
         )
         
     @property

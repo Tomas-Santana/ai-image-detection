@@ -12,7 +12,11 @@ from tqdm import tqdm
 
 def validate(model, data_loader):
     device = next(model.parameters()).device
-    print("number of validation images: ", len(cast(Sized, data_loader.dataset)))
+    try:
+        print("number of validation images: ", len(cast(Sized, data_loader.dataset)))
+    except TypeError:
+        print("number of validation images: unknown (iterable dataset)")
+
     with torch.no_grad():
         y_true, y_pred = [], []
         for data in data_loader:
@@ -47,8 +51,11 @@ if __name__ == '__main__':
         input_size=opt.load_size,
         crop_size=opt.crop_size,
     )
-    dataset_size = len(cast(Sized, train_loader.dataset))
-    print('#training images = %d' % dataset_size)
+    try:
+        dataset_size = len(cast(Sized, train_loader.dataset))
+        print('#training images = %d' % dataset_size)
+    except TypeError:
+        print('#training images = unknown (iterable dataset)')
 
     train_writer = SummaryWriter(os.path.join(opt.checkpoints_dir, opt.experiment_name, "train"))
     val_writer = SummaryWriter(os.path.join(opt.checkpoints_dir, opt.experiment_name, "val"))
