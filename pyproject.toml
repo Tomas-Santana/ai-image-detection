@@ -17,4 +17,5 @@ dependencies = [
     "torchvision>=0.25.0",
     "tqdm>=4.67.3",
     "typed-argument-parser>=1.11.0",
+    "webdataset>=1.0.2",
 ]
