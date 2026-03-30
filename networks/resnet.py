@@ -177,18 +177,20 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        x: torch.Tensor = self.conv1(x)
-        x: torch.Tensor = self.bn1(x)
-        x: torch.Tensor = self.relu(x)
+    def forward(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
         shallow = x  # [B, 64, 112, 112]
-        x: torch.Tensor = self.maxpool(x)  # [B, 64, 56, 56]
+        x = self.maxpool(x)  # [B, 64, 56, 56]
 
-        x: torch.Tensor = self.layer1(x)  # [B, 256, 56, 56]
-        x: torch.Tensor = self.layer2(x)
-        # middle = x #[B, 512, 28, 28]
-        x: torch.Tensor = self.layer3(x)  # [B, 1024, 14, 14]
-        x: torch.Tensor = self.layer4(x)  # [batch_size, 2048, 7, 7]
+        x = self.layer1(x)  # [B, 256, 56, 56]
+        x = self.layer2(x)
+        middle = x  # [B, 512, 28, 28]
+        x = self.layer3(x)  # [B, 1024, 14, 14]
+        x = self.layer4(x)  # [batch_size, 2048, 7, 7]
 
         high = x  # fm: [batch_size, 2048, 7, 7]
 
@@ -198,7 +200,7 @@ class ResNet(nn.Module):
 
         ##embedding = x
 
-        return shallow, high
+        return shallow, middle, high
 
 
 def resnet18(pretrained=False, **kwargs) -> ResNet:

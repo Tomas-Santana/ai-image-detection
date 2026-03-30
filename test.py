@@ -1,7 +1,7 @@
 import csv
 import io
 from collections import OrderedDict
-from typing import Sized, cast
+from typing import Literal, Sized, cast
 
 import numpy as np
 import torch
@@ -16,7 +16,23 @@ from storage.base import BaseFS
 from storage.default import get_storage_fs
 
 
-def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, int]:
+def _best_threshold_by_accuracy(y_true: np.ndarray, y_score: np.ndarray) -> tuple[float, float]:
+    unique_labels = np.unique(y_true)
+    if unique_labels.size < 2:
+        return float("nan"), float("nan")
+
+    positives = float(np.sum(y_true == 1))
+    negatives = float(np.sum(y_true == 0))
+    if positives == 0 or negatives == 0:
+        return float("nan"), float("nan")
+
+    fpr, tpr, thresholds = roc_curve(y_true, y_score)
+    acc_by_threshold = (tpr * positives + (1.0 - fpr) * negatives) / (positives + negatives)
+    best_index = int(np.argmax(acc_by_threshold))
+    return float(thresholds[best_index]), float(acc_by_threshold[best_index])
+
+
+def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, int, float, float]:
     device = next(model.parameters()).device
     try:
         print("number of validation images:", len(cast(Sized, data_loader.dataset)))
@@ -42,6 +58,7 @@ def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, 
 
     acc = accuracy_score(y_true_arr, y_pred_arr > 0.5)
     unique_labels = np.unique(y_true_arr)
+    best_threshold, best_acc = _best_threshold_by_accuracy(y_true_arr, y_pred_arr)
 
     if np.any(y_true_arr == 1):
         ap = average_precision_score(y_true_arr, y_pred_arr)
@@ -57,11 +74,16 @@ def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, 
             f"Validation labels contain one class only ({unique_labels.tolist()}); roc_auc set to NaN for this run"
         )
     num_images = int(y_true_arr.shape[0])
-    return float(acc), float(roc_auc), float(ap), num_images
+    return float(acc), float(roc_auc), float(ap), num_images, float(best_threshold), float(best_acc)
 
 
-def _load_model(checkpoint_path: str, device: torch.device, fs: BaseFS) -> torch.nn.Module:
-    model = Patch5Model()
+def _load_model(
+    checkpoint_path: str,
+    device: torch.device,
+    fs: BaseFS,
+    backbone: Literal["clip", "resnet"],
+) -> torch.nn.Module:
+    model = Patch5Model(backbone=backbone)
     checkpoint_bytes = fs.read_bytes(checkpoint_path)
     state_dict = torch.load(io.BytesIO(checkpoint_bytes), map_location=device)
 
@@ -93,7 +115,16 @@ def _build_results_csv(rows: list[dict[str, float | int | str]]) -> str:
     output = io.StringIO(newline="")
     writer = csv.DictWriter(
         output,
-        fieldnames=["model", "split", "num_images", "accuracy", "roc_auc", "average_precision"],
+        fieldnames=[
+            "model",
+            "split",
+            "num_images",
+            "accuracy",
+            "roc_auc",
+            "average_precision",
+            "best_threshold",
+            "best_accuracy",
+        ],
     )
     writer.writeheader()
     writer.writerows(rows)
@@ -107,7 +138,7 @@ def main() -> None:
     results_fs = get_storage_fs(opt.results_dir)
 
     device = torch.device(f"cuda:{opt.gpu_ids[0]}") if opt.gpu_ids else torch.device("cpu")
-    model = _load_model(opt.model_path, device, checkpoint_fs)
+    model = _load_model(opt.model_path, device, checkpoint_fs, opt.backbone)
 
     models = _resolve_models(opt, dataroot_fs)
     print("Models to evaluate:", ", ".join(models))
@@ -124,10 +155,11 @@ def main() -> None:
             crop_size=opt.crop_size,
         )
 
-        acc, roc_auc, ap, num_images = validate(model, loader)
+        acc, roc_auc, ap, num_images, best_threshold, best_acc = validate(model, loader)
 
         print(
-            f"[model={model_name}] acc={acc:.6f}, roc_auc={roc_auc:.6f}, ap={ap:.6f}, num_images={num_images}"
+            f"[model={model_name}] acc@0.5={acc:.6f}, best_thr={best_threshold:.6f}, "
+            f"acc@best_thr={best_acc:.6f}, roc_auc={roc_auc:.6f}, ap={ap:.6f}, num_images={num_images}"
         )
 
         rows.append(
@@ -138,6 +170,8 @@ def main() -> None:
                 "accuracy": float(acc),
                 "roc_auc": float(roc_auc),
                 "average_precision": float(ap),
+                "best_threshold": float(best_threshold),
+                "best_accuracy": float(best_acc),
             }
         )
 

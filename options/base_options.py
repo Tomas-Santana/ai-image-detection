@@ -24,6 +24,8 @@ class BaseOptions(Tap):
     """
     is_train: bool = True
     gpu_ids: list[int] = [0]
+    
+    backbone: Literal['clip', 'resnet'] = 'clip' # Backbone model to use for Patch5Model. Can be 'clip' or 'resnet'. If 'clip', uses CLIP ResNet-50 with frozen weights (except optionally the last layer). If 'resnet', uses torchvision ResNet-50 with pretrained ImageNet weights and all layers unfrozen.
 
     # Data options
     models: List[Models] = [] # GenImage models to use. If empty in test mode, models can be auto-discovered from dataroot.
