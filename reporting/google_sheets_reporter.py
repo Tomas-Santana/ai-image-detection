@@ -1,6 +1,8 @@
 import importlib
+import math
 import os
 from datetime import datetime, timezone
+from numbers import Real
 from typing import Any
 
 from google.oauth2.service_account import Credentials
@@ -50,7 +52,8 @@ class GoogleSheetsEpochReporter:
             average_precision,
             total_steps,
         ]
-        self._worksheet.append_row(row, value_input_option="RAW")
+        safe_row = [self._to_json_safe_cell(value) for value in row]
+        self._worksheet.append_row(safe_row, value_input_option="RAW")
 
     def _open_or_create_worksheet(self) -> Any:
         spreadsheet = self._open_spreadsheet()
@@ -104,3 +107,16 @@ class GoogleSheetsEpochReporter:
                 "gspread is required for Google Sheets reporting. Install it with 'pip install gspread'."
             ) from exc
         return gspread
+
+    @staticmethod
+    def _to_json_safe_cell(value: Any) -> Any:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, Real):
+            as_float = float(value)
+            if math.isfinite(as_float):
+                if isinstance(value, int):
+                    return int(value)
+                return as_float
+            return ""
+        return value
