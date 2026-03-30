@@ -16,9 +16,12 @@ from storage.base import BaseFS
 from storage.default import get_storage_fs
 
 
-def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float]:
+def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, int]:
     device = next(model.parameters()).device
-    print("number of validation images:", len(cast(Sized, data_loader.dataset)))
+    try:
+        print("number of validation images:", len(cast(Sized, data_loader.dataset)))
+    except TypeError:
+        print("number of validation images: unknown (iterable dataset)")
 
     with torch.no_grad():
         y_true: list[float] = []
@@ -38,10 +41,23 @@ def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float]:
     y_pred_arr = np.array(y_pred)
 
     acc = accuracy_score(y_true_arr, y_pred_arr > 0.5)
-    ap = average_precision_score(y_true_arr, y_pred_arr)
-    fpr, tpr, _ = roc_curve(y_true_arr, y_pred_arr)
-    roc_auc = auc(fpr, tpr)
-    return float(acc), float(roc_auc), float(ap)
+    unique_labels = np.unique(y_true_arr)
+
+    if np.any(y_true_arr == 1):
+        ap = average_precision_score(y_true_arr, y_pred_arr)
+    else:
+        ap = float('nan')
+
+    if unique_labels.size >= 2:
+        fpr, tpr, _ = roc_curve(y_true_arr, y_pred_arr)
+        roc_auc = auc(fpr, tpr)
+    else:
+        roc_auc = float('nan')
+        print(
+            f"Validation labels contain one class only ({unique_labels.tolist()}); roc_auc set to NaN for this run"
+        )
+    num_images = int(y_true_arr.shape[0])
+    return float(acc), float(roc_auc), float(ap), num_images
 
 
 def _load_model(checkpoint_path: str, device: torch.device, fs: BaseFS) -> torch.nn.Module:
@@ -108,8 +124,7 @@ def main() -> None:
             crop_size=opt.crop_size,
         )
 
-        acc, roc_auc, ap = validate(model, loader)
-        num_images = len(cast(Sized, loader.dataset))
+        acc, roc_auc, ap, num_images = validate(model, loader)
 
         print(
             f"[model={model_name}] acc={acc:.6f}, roc_auc={roc_auc:.6f}, ap={ap:.6f}, num_images={num_images}"
