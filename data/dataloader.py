@@ -438,7 +438,8 @@ def get_loader(
             empty_check=False,
         ) # type: ignore
         if train:
-            dataset = dataset.shuffle(1000)
+            shuffle_buffer = max(1000, opt.batch_size * 200)
+            dataset = dataset.shuffle(shuffle_buffer)
 
         dataset = dataset.decode("pil", handler=wds.ignore_and_continue).map(decoder, handler=wds.ignore_and_continue).select(is_not_none) # type: ignore
         return DataLoader(
