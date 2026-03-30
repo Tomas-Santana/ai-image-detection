@@ -5,9 +5,8 @@ def process_dataset():
     input_base = "DATAROOT"
     output_base = "DATAROOT_WDS"
     
-    # Class to integer mapping
-    # Assuming nature (real) is 0 and ai (fake) is 1, a standard convention
-    class_to_idx = {"nature": 0, "ai": 1}
+    # Class to integer mapping used throughout train/test loaders.
+    class_to_idx = {"nature": 1, "ai": 0}
 
     # Iterate over all datasets in DATAROOT
     if not os.path.exists(input_base):

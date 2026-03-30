@@ -82,9 +82,21 @@ def validate(model, data_loader):
 
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     acc = float(accuracy_score(y_true, y_pred > 0.5))
-    ap = float(average_precision_score(y_true, y_pred))
-    fpr, tpr, _ = roc_curve(y_true, y_pred)
-    roc_auc = float(auc(fpr, tpr))
+    unique_labels = np.unique(y_true)
+
+    if np.any(y_true == 1):
+        ap = float(average_precision_score(y_true, y_pred))
+    else:
+        ap = float('nan')
+
+    if unique_labels.size >= 2:
+        fpr, tpr, _ = roc_curve(y_true, y_pred)
+        roc_auc = float(auc(fpr, tpr))
+    else:
+        roc_auc = float('nan')
+        print(
+            f"Validation labels contain one class only ({unique_labels.tolist()}); roc_auc set to NaN for this epoch"
+        )
  
     return acc, roc_auc, ap
 

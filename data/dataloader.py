@@ -16,11 +16,31 @@ import webdataset as wds
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
+LABEL_AI = 0
+LABEL_NATURE = 1
 
 
 def _join_data_path(root: str, *parts: str) -> str:
     clean_parts = [part.strip("/\\") for part in parts if part]
-    if root.startswith("gs://") or root.startswith("az://") or root.startswith("https://") or root.startswith("http://"):
+    if root.startswith("https://") or root.startswith("http://"):
+        parsed = urlsplit(root)
+        base_path = parsed.path.rstrip('/\\')
+
+        if base_path and clean_parts:
+            joined_path = '/'.join([base_path, *clean_parts])
+        elif base_path:
+            joined_path = base_path
+        elif clean_parts:
+            joined_path = '/' + '/'.join(clean_parts)
+        else:
+            joined_path = '/'
+
+        if not joined_path.startswith('/'):
+            joined_path = '/' + joined_path
+
+        return urlunsplit((parsed.scheme, parsed.netloc, joined_path, parsed.query, parsed.fragment))
+
+    if root.startswith("gs://") or root.startswith("az://"):
         return "/".join([root.rstrip("/"), *clean_parts])
     return os.path.join(root, *clean_parts)
 
@@ -193,7 +213,15 @@ def load_azstoragetorch_blob_dataset(
     container_name = path_parts[0]
     prefix = "/".join(path_parts[1:])
 
-    container_url = f"{parsed.scheme}://{parsed.netloc}/{container_name}"
+    container_url = urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            f"/{container_name}",
+            parsed.query,
+            parsed.fragment,
+        )
+    )
 
     processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
 
@@ -202,7 +230,7 @@ def load_azstoragetorch_blob_dataset(
             bytes_content = f.read()
         img: Image.Image = Image.open(BytesIO(bytes_content)).convert("RGB")
         blob_name = blob.blob_name
-        label = 1 if "nature" in blob_name else 0
+        label = LABEL_NATURE if "nature" in blob_name else LABEL_AI
         input_img, cropped_img, scale = processor(img)
         return input_img, cropped_img, int(label), scale, blob_name
 
@@ -228,7 +256,7 @@ def load_dataflux_mapstyle_dataset(
 
     def format_fn(path: str, bytes_content: bytes):
         img: Image.Image = Image.open(BytesIO(bytes_content)).convert("RGB")
-        label = 1 if "nature" in path else 0
+        label = LABEL_NATURE if "nature" in path else LABEL_AI
         input_img, cropped_img, scale = processor(img)
         return input_img, cropped_img, int(label), scale, path
 
@@ -339,9 +367,24 @@ class WDSDecoder:
 
     def __call__(self, sample):
         key = sample.get("__key__", "")
-        img_pil = sample.get("jpg") or sample.get("png")
+        img_pil = (
+            sample.get("jpg")
+            or sample.get("jpeg")
+            or sample.get("png")
+            or sample.get("webp")
+        )
         label_int = sample.get("cls")
-        if img_pil is None or label_int is None:
+        if img_pil is None:
+            return None
+
+        # Prefer key-derived labels so old/new shards stay consistent.
+        lowered_key = str(key).lower()
+        if lowered_key.startswith("nature/") or "/nature/" in lowered_key:
+            label_int = LABEL_NATURE
+        elif lowered_key.startswith("ai/") or "/ai/" in lowered_key:
+            label_int = LABEL_AI
+
+        if label_int is None:
             return None
         try:
             label_int = int(label_int)
