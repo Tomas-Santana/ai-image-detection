@@ -43,6 +43,7 @@ class BaseOptions(Tap):
     checkpoints_dir: str = "./checkpoints" # Directory to save checkpoints and logs. Can be a gcs path (e.g. gs://my-bucket/checkpoints) if using --gcp_project_name or an Azure Blob URL (e.g. https://<account>.blob.core.windows.net/<container>/<optional-prefix>)
     fs: Literal['local', 'gcs', 'azure'] = "local" # Whether to load/save data from the local filesystem, Google Cloud Storage (GCS), or Azure Blob Storage. It is inferred from gcp_project_name and dataroot format.
     use_wds: bool = False # Use WebDataset
+    wds_cache_in_ram: bool = False # Cache decoded WebDataset samples in RAM after first pass. Enable only if dataset fits memory.
     
     def process_args(self):
         if self.gcp_project_name is not None:
@@ -90,6 +91,7 @@ class BaseOptions(Tap):
             workers=self.workers,
             gcp_project_name=self.gcp_project_name,
             use_wds=self.use_wds,
+            wds_cache_in_ram=self.wds_cache_in_ram,
         )
         
     @property

@@ -442,6 +442,8 @@ def get_loader(
             dataset = dataset.shuffle(shuffle_buffer)
 
         dataset = dataset.decode("pil", handler=wds.ignore_and_continue).map(decoder, handler=wds.ignore_and_continue).select(is_not_none) # type: ignore
+        if getattr(opt, "wds_cache_in_ram", False):
+            dataset = dataset.mcached() # type: ignore
         return DataLoader(
             dataset,
             batch_size=opt.batch_size,

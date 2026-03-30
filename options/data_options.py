@@ -30,3 +30,4 @@ class DatasetOptions:
     workers: int = 4
     gcp_project_name: Optional[str] = None
     use_wds: bool = False
+    wds_cache_in_ram: bool = False
