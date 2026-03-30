@@ -19,11 +19,14 @@ class LocalFS(BaseFS):
         with open(path, "rb") as file:
             return file.read()
 
-    def write_text(self, path: str, content: str) -> None:
+    def write_bytes(self, path: str, content: bytes) -> None:
         parent = os.path.dirname(path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        with open(path, "w", encoding="utf-8", newline="") as file:
+        with open(path, "wb") as file:
             file.write(content)
+
+    def write_text(self, path: str, content: str) -> None:
+        self.write_bytes(path, content.encode("utf-8"))
 
 

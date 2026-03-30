@@ -1,5 +1,5 @@
 import os
-from typing import Sized, cast
+from typing import Any, Sized, cast
 import torch
 from tensorboardX import SummaryWriter
 import numpy as np
@@ -8,7 +8,59 @@ from networks.trainer import Trainer
 from options.train_options import TrainOptions
 from data.dataloader import get_loader
 from sklearn.metrics import average_precision_score, accuracy_score, roc_curve, auc
+from storage.default import is_azure_blob_url
 from tqdm import tqdm
+
+
+def _resolve_tensorboard_log_root(checkpoints_dir: str, experiment_name: str) -> str:
+    if is_azure_blob_url(checkpoints_dir):
+        local_log_root = os.path.join('./checkpoints', experiment_name)
+        print(
+            "checkpoints_dir is an Azure Blob URL; TensorBoard logs will be written locally to %s"
+            % local_log_root
+        )
+        return local_log_root
+    return os.path.join(checkpoints_dir, experiment_name)
+
+
+def _append_evalacc_row(epoch: int, acc: float, roc_auc: float, ap: float) -> None:
+    info = [str(epoch), ',', str(acc), ',', str(roc_auc), ',', str(ap)]
+    with open('./evalacc.txt', 'a', encoding='utf-8') as f:
+        f.writelines(info)
+        f.writelines('\n')
+
+
+def _build_google_sheets_reporter(opt: TrainOptions) -> Any | None:
+    if not opt.save_results_to_google_sheets:
+        return None
+
+    from reporting.google_sheets_reporter import GoogleSheetsEpochReporter
+
+    credentials_path = opt.google_sheets_credentials_path or None
+    return GoogleSheetsEpochReporter(
+        spreadsheet_id=opt.google_sheets_spreadsheet_id,
+        experiment_name=opt.experiment_name,
+        credentials_path=credentials_path,
+    )
+
+
+def _append_google_sheets_row(
+    reporter: Any | None,
+    epoch: int,
+    acc: float,
+    roc_auc: float,
+    ap: float,
+    total_steps: int,
+) -> None:
+    if reporter is None:
+        return
+    reporter.append_epoch_result(
+        epoch=epoch,
+        accuracy=acc,
+        roc_auc=roc_auc,
+        average_precision=ap,
+        total_steps=total_steps,
+    )
 
 def validate(model, data_loader):
     device = next(model.parameters()).device
@@ -29,16 +81,17 @@ def validate(model, data_loader):
             y_true.extend(label.flatten().tolist())
 
     y_true, y_pred = np.array(y_true), np.array(y_pred)
-    acc = accuracy_score(y_true, y_pred > 0.5)
-    ap = average_precision_score(y_true, y_pred)
+    acc = float(accuracy_score(y_true, y_pred > 0.5))
+    ap = float(average_precision_score(y_true, y_pred))
     fpr, tpr, _ = roc_curve(y_true, y_pred)
-    roc_auc = auc(fpr, tpr)
+    roc_auc = float(auc(fpr, tpr))
  
     return acc, roc_auc, ap
 
 
 if __name__ == '__main__':
     opt = TrainOptions().parse_args()
+    google_sheets_reporter = _build_google_sheets_reporter(opt)
     train_loader = get_loader(
         opt.train_dataset_options,
         train=True,
@@ -57,8 +110,9 @@ if __name__ == '__main__':
     except TypeError:
         print('#training images = unknown (iterable dataset)')
 
-    train_writer = SummaryWriter(os.path.join(opt.checkpoints_dir, opt.experiment_name, "train"))
-    val_writer = SummaryWriter(os.path.join(opt.checkpoints_dir, opt.experiment_name, "val"))
+    tensorboard_log_root = _resolve_tensorboard_log_root(opt.checkpoints_dir, opt.experiment_name)
+    train_writer = SummaryWriter(os.path.join(tensorboard_log_root, "train"))
+    val_writer = SummaryWriter(os.path.join(tensorboard_log_root, "val"))
 
     model = Trainer(opt)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -92,10 +146,15 @@ if __name__ == '__main__':
         val_writer.add_scalar('roc_auc', roc_auc, model.total_steps)
         val_writer.add_scalar('ap', ap, model.total_steps)
         print("(Val @ epoch {}) acc: {}; roc_auc: {}; ap: {}".format(epoch, acc, roc_auc, ap))
-        info = [str(epoch), ',', str(acc), ',', str(roc_auc), ',', str(ap)]
-        with open('./evalacc.txt', 'a') as f:
-            f.writelines(info)
-            f.writelines('\n')
+        _append_evalacc_row(epoch, acc, roc_auc, ap)
+        _append_google_sheets_row(
+            reporter=google_sheets_reporter,
+            epoch=epoch,
+            acc=acc,
+            roc_auc=roc_auc,
+            ap=ap,
+            total_steps=model.total_steps,
+        )
         
         early_stopping(acc, model)
         if early_stopping.early_stop:

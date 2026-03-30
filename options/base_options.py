@@ -1,9 +1,20 @@
 from typing import Optional
 from typing import List
 from typing import Literal
+from urllib.parse import urlsplit
 from .data_options import DatasetOptions, Models
 import torch
 from tap import Tap
+
+
+def _is_http_url(path: str) -> bool:
+    return path.startswith('https://') or path.startswith('http://')
+
+
+def _is_azure_blob_url(path: str) -> bool:
+    if not _is_http_url(path):
+        return False
+    return 'blob.core.windows.net' in urlsplit(path).netloc
 
 class BaseOptions(Tap):
     """Tap-based options with the same flags/behavior as BaseOptions.
@@ -29,14 +40,14 @@ class BaseOptions(Tap):
     crop_size: int = 224 # Size to crop images to for the global branch during training
     
     experiment_name: str = "" # Name of the experiment, used for saving checkpoints and logs
-    checkpoints_dir: str = "./checkpoints" # Directory to save checkpoints and logs. Can be a gcs path (e.g. gs://my-bucket/checkpoints) if using --gcp_project_name
+    checkpoints_dir: str = "./checkpoints" # Directory to save checkpoints and logs. Can be a gcs path (e.g. gs://my-bucket/checkpoints) if using --gcp_project_name or an Azure Blob URL (e.g. https://<account>.blob.core.windows.net/<container>/<optional-prefix>)
     fs: Literal['local', 'gcs', 'azure'] = "local" # Whether to load/save data from the local filesystem, Google Cloud Storage (GCS), or Azure Blob Storage. It is inferred from gcp_project_name and dataroot format.
     use_wds: bool = False # Use WebDataset
     
     def process_args(self):
         if self.gcp_project_name is not None:
             self.fs = 'gcs'
-        elif self.dataroot.startswith('https://') or self.dataroot.startswith('http://'):
+        elif _is_http_url(self.dataroot):
             self.fs = 'azure'
         else:
             self.fs = 'local'
@@ -50,10 +61,13 @@ class BaseOptions(Tap):
             if not self.checkpoints_dir.startswith('gs://'):
                 raise ValueError("When using --gcp_project_name, checkpoints_dir should be a gcs path (e.g. gs://my-bucket/checkpoints)")
         if self.fs == 'azure':
-            if not (self.dataroot.startswith('https://') or self.dataroot.startswith('http://')):
+            if not _is_azure_blob_url(self.dataroot):
                 raise ValueError("When using Azure Blob Storage, dataroot should be a full container URL (e.g. https://<account>.blob.core.windows.net/<container>/<optional-prefix>)")
             if self.checkpoints_dir.startswith('gs://') or self.checkpoints_dir.startswith('az://'):
-                raise ValueError("When using Azure Blob Storage, checkpoints_dir should be a local path (e.g. ./checkpoints)")
+                raise ValueError("When using Azure Blob Storage, checkpoints_dir should be a local path or an Azure Blob URL (e.g. ./checkpoints or https://<account>.blob.core.windows.net/<container>/<optional-prefix>)")
+
+        if _is_http_url(self.checkpoints_dir) and not _is_azure_blob_url(self.checkpoints_dir):
+            raise ValueError("checkpoints_dir supports http(s) only for Azure Blob URLs (e.g. https://<account>.blob.core.windows.net/<container>/<optional-prefix>)")
 
         if self.gpu_ids == [-1] or not torch.cuda.is_available():
             self.gpu_ids = []

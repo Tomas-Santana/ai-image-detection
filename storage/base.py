@@ -14,5 +14,9 @@ class BaseFS(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def write_bytes(self, path: str, content: bytes) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     def write_text(self, path: str, content: str) -> None:
         raise NotImplementedError
