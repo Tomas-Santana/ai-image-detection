@@ -2,22 +2,23 @@ import torch
 import torch.nn as nn
 from networks.base_model import BaseModel
 from networks.patch_model import Patch5Model
+from options.train_options import TrainOptions
 
 
 class Trainer(BaseModel):
     def name(self):
         return "Trainer"
 
-    def __init__(self, opt):
+    def __init__(self, opt: TrainOptions):
         super(Trainer, self).__init__(opt)
 
         if self.is_train and not opt.continue_train:
-            self.model = Patch5Model()
+            self.model = Patch5Model(unfreeze_last_clip_layer=opt.unfreeze_last_clip_layer)
             if torch.cuda.device_count() > 1:
                 self.model = nn.DataParallel(self.model)
 
         if opt.continue_train:
-            self.model = Patch5Model()
+            self.model = Patch5Model(unfreeze_last_clip_layer=opt.unfreeze_last_clip_layer)
 
         if self.is_train:
             self.loss_fn = nn.BCEWithLogitsLoss()

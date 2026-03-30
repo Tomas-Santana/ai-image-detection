@@ -7,9 +7,9 @@ from networks.cooi import COOI
 
 
 class Patch5Model(nn.Module):
-    def __init__(self):
+    def __init__(self, unfreeze_last_clip_layer: bool = False):
         super(Patch5Model, self).__init__()
-        self.clip = CLIPResNet(model_name="RN50", frozen=True)
+        self.clip = CLIPResNet(model_name="RN50", frozen=True, unfreeze_last_layer=unfreeze_last_clip_layer)
         self.mid_dims = 128
         self.COOI = COOI()
 

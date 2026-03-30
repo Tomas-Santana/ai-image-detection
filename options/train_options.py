@@ -14,6 +14,7 @@ class TrainOptions(BaseOptions):
     lr: float = 0.0001 # learning rate for the optimizer
     optim: Literal['sgd', 'adam'] = 'adam' # optimizer to use
     beta1: float = 0.9 # beta1 for Adam
+    unfreeze_last_clip_layer: bool = False # Whether to unfreeze the last layer of CLIP during training
     train_split: str = 'train' # dataset split to use for training
     val_split: str = 'val' # dataset split to use for validation
     results_dir: str = './results' # Folder where evaluation csv results are stored (local path or Azure Blob URL prefix)
