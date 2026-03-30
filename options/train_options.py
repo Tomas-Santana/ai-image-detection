@@ -9,7 +9,8 @@ class TrainOptions(BaseOptions):
     earlystop_epoch: int = 10 # number of epochs to wait for improvement before early stopping
     continue_train: bool = False # resume training from model_path
     new_optim: bool = False # do not load optimizer state when resuming
-    checkpoint_freq: int = 5 # frequency of saving checkpoints (in epochs)
+    checkpoint_freq: int = 5 # frequency of saving checkpoints (in iters)
+    save_model_freq: int = 1 # frequency of saving checkpoints (in epochs)
     niter: int = 10 # number of epochs to train for
     lr: float = 0.0001 # learning rate for the optimizer
     optim: Literal['sgd', 'adam'] = 'adam' # optimizer to use

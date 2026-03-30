@@ -147,9 +147,9 @@ if __name__ == '__main__':
                       (opt.experiment_name, epoch, model.total_steps))
                 model.save_networks('latest')
 
-
-        print('saving the model at the end of epoch %d, iters %d' % (epoch, model.total_steps))
-        model.save_networks(epoch)
+        if epoch % opt.save_model_freq == 0:
+            print('saving the model at the end of epoch %d, iters %d' % (epoch, model.total_steps))
+            model.save_networks(epoch)
 
         # Validation 
         model.eval()
