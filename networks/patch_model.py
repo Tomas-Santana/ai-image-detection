@@ -13,9 +13,9 @@ class Patch5Model(nn.Module):
     def __init__(self, unfreeze_last_clip_layer: bool = False, backbone: Literal['clip', 'resnet'] = 'clip'):
         super(Patch5Model, self).__init__()
         if backbone == 'clip':
-            self.backbone = CLIPResNet(model_name="RN50", frozen=True, unfreeze_last_layer=unfreeze_last_clip_layer)
+            self.clip = CLIPResNet(model_name="RN50", frozen=True, unfreeze_last_layer=unfreeze_last_clip_layer)
         else:
-            self.backbone = resnet50(pretrained=True)
+            self.clip = resnet50(pretrained=True)
         self.mid_dims = 128
         self.COOI = COOI()
 
@@ -42,7 +42,7 @@ class Patch5Model(nn.Module):
         use_amp = cropped_img.device.type == "cuda"
         with amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
             batch_size, _, _, _ = cropped_img.shape  # [batch_size, 3, 224, 224]
-            shallow_global_maps, mid_global_maps, high_global_maps = self.backbone(
+            shallow_global_maps, mid_global_maps, high_global_maps = self.clip(
                 cropped_img
             )  # shallow: [B, 64, 112, 112], middle: [B, 512, 28, 28], high: [B, 2048, 7, 7]
             fused_global_maps = self.ThreeFusion(
@@ -82,7 +82,7 @@ class Patch5Model(nn.Module):
             window_imgs = window_imgs.reshape(
                 batch_size * proposal_size, 3, 224, 224
             ).to(fused_global_maps.device)  # [B * proposal_size, 3, 224, 224]
-            _, _, local_maps = self.backbone(
+            _, _, local_maps = self.clip(
                 window_imgs.detach()
             )  # [B * proposal_size, 2048, 7, 7]
             local_embedding = self.avgpool(local_maps).flatten(1)  # [B * proposal_size, 2048]
