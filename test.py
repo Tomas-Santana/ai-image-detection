@@ -1,7 +1,7 @@
 import csv
 import io
 from collections import OrderedDict
-from typing import Literal, Sized, cast
+from typing import Any, Literal, Sized, cast
 
 import numpy as np
 import torch
@@ -34,6 +34,8 @@ def _best_threshold_by_accuracy(y_true: np.ndarray, y_score: np.ndarray) -> tupl
 
 def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, int, float, float]:
     device = next(model.parameters()).device
+    amp = cast(Any, torch.amp)
+    use_amp = device.type == "cuda"
     try:
         print("number of validation images:", len(cast(Sized, data_loader.dataset)))
     except TypeError:
@@ -49,7 +51,8 @@ def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, 
             label = data[2].to(device)
             scale = data[3].to(device)
 
-            logits = model(input_img, cropped_img, scale)
+            with amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
+                logits = model(input_img, cropped_img, scale)
             y_pred.extend(logits.sigmoid().flatten().tolist())
             y_true.extend(label.flatten().tolist())
 

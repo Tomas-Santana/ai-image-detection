@@ -64,6 +64,8 @@ def _append_google_sheets_row(
 
 def validate(model, data_loader):
     device = next(model.parameters()).device
+    amp = cast(Any, torch.amp)
+    use_amp = device.type == 'cuda'
     try:
         print("number of validation images: ", len(cast(Sized, data_loader.dataset)))
     except TypeError:
@@ -77,7 +79,9 @@ def validate(model, data_loader):
             label = data[2].to(device)
             scale = data[3].to(device)
 
-            y_pred.extend(model(input_img, cropped_img, scale).sigmoid().flatten().tolist())
+            with amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
+                logits = model(input_img, cropped_img, scale)
+            y_pred.extend(logits.sigmoid().flatten().tolist())
             y_true.extend(label.flatten().tolist())
 
     y_true, y_pred = np.array(y_true), np.array(y_pred)
@@ -103,6 +107,9 @@ def validate(model, data_loader):
 
 if __name__ == '__main__':
     opt = TrainOptions().parse_args()
+    amp = cast(Any, torch.amp)
+    use_amp = len(opt.gpu_ids) > 0 and torch.cuda.is_available()
+    scaler = amp.GradScaler("cuda", enabled=use_amp)
     google_sheets_reporter = _build_google_sheets_reporter(opt)
     train_loader = get_loader(
         opt.train_dataset_options,
@@ -136,7 +143,15 @@ if __name__ == '__main__':
             model.total_steps += 1
 
             model.set_input(data)
-            model.optimize_parameters()
+            model.optimizer.zero_grad(set_to_none=True)
+            with amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
+                model.forward()
+                loss = model.get_loss()
+
+            scaler.scale(loss).backward()
+            scaler.step(model.optimizer)
+            scaler.update()
+            model.loss = float(loss.detach().item())
 
             if model.total_steps % opt.checkpoint_freq == 0:
                 print("Train loss: {} at step: {}".format(model.loss, model.total_steps))
