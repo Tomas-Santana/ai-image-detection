@@ -12,7 +12,6 @@ class Trainer(BaseModel):
     def __init__(self, opt: TrainOptions):
         super(Trainer, self).__init__(opt)
         
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=opt.niter, eta_min=1e-6)
 
         if self.is_train and not opt.continue_train:
             self.model = Patch5Model(unfreeze_last_clip_layer=opt.unfreeze_last_clip_layer, backbone=opt.backbone)
@@ -34,6 +33,8 @@ class Trainer(BaseModel):
                 )
             else:
                 raise ValueError("optim should be [adam, sgd]")
+            
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=opt.niter, eta_min=1e-6)
 
         if self.is_train and opt.continue_train:
             print(opt.model_path)
