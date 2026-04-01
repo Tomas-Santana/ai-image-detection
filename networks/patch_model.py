@@ -20,18 +20,18 @@ class Patch5Model(nn.Module):
         self.COOI = COOI()
 
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=128,
+            d_model=self.mid_dims,
             nhead=4,
-            dim_feedforward=128,
+            dim_feedforward=self.mid_dims,
             dropout=0.1,
             activation="relu",
             batch_first=True,
         )
         self.mha_list = nn.TransformerEncoder(encoder_layer, num_layers=3)
 
-        self.fc1 = nn.Linear(2048, 128)
+        self.fc1 = nn.Linear(2048, self.mid_dims)
         self.ac = nn.ReLU()
-        self.fc = nn.Linear(128, 1)
+        self.fc = nn.Linear(self.mid_dims, 1)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.ThreeFusion = ThreeLevelFusion(self.mid_dims)
 
@@ -47,13 +47,13 @@ class Patch5Model(nn.Module):
             )  # shallow: [B, 64, 112, 112], middle: [B, 512, 28, 28], high: [B, 2048, 7, 7]
             fused_global_maps = self.ThreeFusion(
                 shallow_global_maps, mid_global_maps, high_global_maps
-            )  # [B, 128, 7, 7]
+            )  # [B, mid_dims, 7, 7]
 
-            # global embedding: [B, 128, 1, 1] -> [B, 128] -> [B, 1, 128]
+            # global embedding: [B, mid_dims, 1, 1] -> [B, mid_dims] -> [B, 1, mid_dims]
             global_embedding = self.avgpool(fused_global_maps)
             global_embedding = global_embedding.flatten(1)
-            global_embedding = self.ac(global_embedding)  # [16,128]
-            global_embedding = global_embedding.view(-1, 1, self.mid_dims)  # [16, 1, 128]
+            global_embedding = self.ac(global_embedding)  # [B, mid_dims]
+            global_embedding = global_embedding.view(-1, 1, self.mid_dims)  # [B, 1, mid_dims]
 
             input_loc, _ = self.COOI.get_coordinates(
                 fused_global_maps.detach(), scale
@@ -86,12 +86,12 @@ class Patch5Model(nn.Module):
                 window_imgs
             )  # [B * proposal_size, 2048, 7, 7]
             local_embedding = self.avgpool(local_maps).flatten(1)  # [B * proposal_size, 2048]
-            local_embedding = self.ac(self.fc1(local_embedding))  # [B * proposal_size, 128]
-            local_embedding = local_embedding.view(-1, proposal_size, 128)
+            local_embedding = self.ac(self.fc1(local_embedding))  # [B * proposal_size, mid_dims]
+            local_embedding = local_embedding.view(-1, proposal_size, self.mid_dims)
 
             all_embeddings = torch.cat(
                 (local_embedding, global_embedding), 1
-            )  # [B, proposal_size + 1, 128]
+            )  # [B, proposal_size + 1, mid_dims]
             all_embeddings = self.mha_list(all_embeddings)
             all_logits = self.fc(all_embeddings[:, -1])
 
