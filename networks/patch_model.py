@@ -16,7 +16,7 @@ class Patch5Model(nn.Module):
             self.clip = CLIPResNet(model_name="RN50", frozen=True, unfreeze_last_layer=unfreeze_last_clip_layer)
         else:
             self.clip = resnet50(pretrained=True)
-        self.mid_dims = 128
+        self.mid_dims = 256
         self.COOI = COOI()
 
         encoder_layer = nn.TransformerEncoderLayer(
@@ -83,7 +83,7 @@ class Patch5Model(nn.Module):
                 batch_size * proposal_size, 3, 224, 224
             ).to(fused_global_maps.device)  # [B * proposal_size, 3, 224, 224]
             _, _, local_maps = self.clip(
-                window_imgs.detach()
+                window_imgs
             )  # [B * proposal_size, 2048, 7, 7]
             local_embedding = self.avgpool(local_maps).flatten(1)  # [B * proposal_size, 2048]
             local_embedding = self.ac(self.fc1(local_embedding))  # [B * proposal_size, 128]
