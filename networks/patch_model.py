@@ -23,7 +23,7 @@ class Patch5Model(nn.Module):
             d_model=128,
             nhead=4,
             dim_feedforward=128,
-            dropout=0.0,
+            dropout=0.1,
             activation="relu",
             batch_first=True,
         )
