@@ -40,7 +40,7 @@ class Patch5Model(nn.Module):
     ) -> torch.Tensor:
         amp = cast(Any, torch.amp)
         use_amp = cropped_img.device.type == "cuda"
-        with amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
+        with amp.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16):
             batch_size, _, _, _ = cropped_img.shape  # [batch_size, 3, 224, 224]
             shallow_global_maps, mid_global_maps, high_global_maps = self.clip(
                 cropped_img

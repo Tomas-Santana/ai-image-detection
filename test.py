@@ -51,7 +51,7 @@ def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, 
             label = data[2].to(device)
             scale = data[3].to(device)
 
-            with amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
+            with amp.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16):
                 logits = model(input_img, cropped_img, scale)
             y_pred.extend(logits.sigmoid().flatten().tolist())
             y_true.extend(label.flatten().tolist())

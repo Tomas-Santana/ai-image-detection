@@ -22,7 +22,7 @@ class DatasetOptions:
     dataroot: str = "./DATAROOT"
     split: str = "train"
     transforms: TransformOpt = field(
-        default_factory=lambda: {"jpeg": 0.5, "blur": 0.3, "hflip": 0.0}
+        default_factory=lambda: {"jpeg": 0.1, "blur": 0.1, "hflip": 0.0}
     )
     blur_sigma: tuple[float, float] = (0.1, 2.0)
     jpeg_quality: tuple[int, int] = (75, 90)
