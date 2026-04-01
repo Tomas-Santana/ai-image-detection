@@ -13,6 +13,7 @@ class TrainOptions(BaseOptions):
     save_model_freq: int = 1 # frequency of saving checkpoints (in epochs)
     niter: int = 10 # number of epochs to train for
     lr: float = 0.0001 # learning rate for the optimizer
+    weight_decay: float = 1e-4 # weight decay for the optimizer
     optim: Literal['sgd', 'adam'] = 'adam' # optimizer to use
     beta1: float = 0.9 # beta1 for Adam
     unfreeze_last_clip_layer: bool = False # Whether to unfreeze the last layer of CLIP during training

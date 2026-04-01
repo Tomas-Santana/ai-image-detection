@@ -161,6 +161,8 @@ if __name__ == '__main__':
                 print('saving the latest model %s (epoch %d, model.total_steps %d)' %
                       (opt.experiment_name, epoch, model.total_steps))
                 model.save_networks('latest')
+                
+        model.scheduler.step()
 
         if epoch % opt.save_model_freq == 0:
             print('saving the model at the end of epoch %d, iters %d' % (epoch, model.total_steps))
