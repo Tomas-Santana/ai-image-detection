@@ -83,7 +83,7 @@ class Patch5Model(nn.Module):
                 batch_size * proposal_size, 3, 224, 224
             ).to(fused_global_maps.device)  # [B * proposal_size, 3, 224, 224]
             _, _, local_maps = self.clip(
-                window_imgs
+                window_imgs.detach()
             )  # [B * proposal_size, 2048, 7, 7]
             local_embedding = self.avgpool(local_maps).flatten(1)  # [B * proposal_size, 2048]
             local_embedding = self.ac(self.fc1(local_embedding))  # [B * proposal_size, mid_dims]
