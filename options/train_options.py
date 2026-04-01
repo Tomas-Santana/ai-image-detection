@@ -6,7 +6,7 @@ from .data_options import DatasetOptions
 class TrainOptions(BaseOptions):
     model_path: str = "" # Path to a checkpoint to load for training (e.g. for fine-tuning or resuming training). Supports local path, gcs path (with --gcp_project_name), or Azure Blob URL
     is_train: bool = True
-    earlystop_epoch: int = 10 # number of epochs to wait for improvement before early stopping
+    earlystop_epoch: int = 5 # number of epochs to wait for improvement before early stopping
     continue_train: bool = False # resume training from model_path
     new_optim: bool = False # do not load optimizer state when resuming
     checkpoint_freq: int = 5 # frequency of saving checkpoints (in iters)
