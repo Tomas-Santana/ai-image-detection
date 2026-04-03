@@ -63,9 +63,9 @@ class MultiLevelFusion(nn.Module):
         )  # [16,128,7,7]
         return fused_feature_maps  # [16,128,7,7]
     
-class TreeLevelFusion(nn.Module):
+class ThreeLevelFusion(nn.Module):
     def __init__(self, mid_dim: int = 128):
-        super(TreeLevelFusion, self).__init__()
+        super(ThreeLevelFusion, self).__init__()
         self.mid_dim = mid_dim
         self.project_high = nn.Linear(2048, mid_dim)
         self.project_shallow = nn.Linear(64, mid_dim)
@@ -146,6 +146,46 @@ class TreeLevelFusion(nn.Module):
         )  # [B, mid_dim, 7, 7]
         return fused_feature_maps  # [B, mid_dim, 7, 7]
 
+class ViTLevelFusion(nn.Module):
+    def __init__(self, mid_dim: int = 256):
+        super(ViTLevelFusion, self).__init__()
+        self.mid_dim = mid_dim
+        # ViT-B-16 embedding dim is 768. 3 layers concatenated = 2304
+        self.project = nn.Linear(768 * 3, mid_dim)
+        
+        # FIX: Spatial Positional Encoding for the 14x14 grid (196 tokens)
+        self.spatial_pos_embed = nn.Parameter(torch.randn(1, 196, mid_dim))
 
-ThreeLevelFusion = TreeLevelFusion
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=mid_dim,
+            nhead=4,
+            dim_feedforward=mid_dim,
+            dropout=0.1,
+            activation="relu",
+            batch_first=True,
+        )
+        self.mha_list = nn.TransformerEncoder(encoder_layer, num_layers=3)
+        
+    def forward(self, early: torch.Tensor, mid: torch.Tensor, late: torch.Tensor) -> torch.Tensor:
+        B, C, H, W = early.shape
+        
+        # Concatenate channels: [B, 2304, 14, 14]
+        x = torch.cat((early, mid, late), dim=1)
+        
+        # Flatten to sequence for attention: [B, 196, 2304]
+        x = x.view(B, C * 3, -1).transpose(1, 2)
+        
+        # Project down to mid_dim: [B, 196, 256]
+        x = self.project(x)
+        
+        # Inject Spatial Awareness
+        x = x + self.spatial_pos_embed
+        
+        # Self-attention over the 196 spatial tokens
+        x = self.mha_list(x)
+        
+        # Reshape back to spatial feature map: [B, 256, 14, 14]
+        x = x.transpose(1, 2).reshape(B, self.mid_dim, H, W)
+        return x
+
 

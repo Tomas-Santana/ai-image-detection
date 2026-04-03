@@ -41,3 +41,53 @@ class CLIPResNet(nn.Module):
         high = self.visual.layer4(x)  # [B, 2048, H/32, W/32]
 
         return shallow, middle, high
+
+class CLIPViT(nn.Module):
+    def __init__(self, model_name="ViT-B-16", pretrained="openai", frozen=True):
+        super(CLIPViT, self).__init__()
+        self.clip_model, _, _ = open_clip.create_model_and_transforms(
+            model_name, pretrained=pretrained, jit=False
+        )
+        self.visual = self.clip_model.visual
+        
+        if frozen:
+            for param in self.parameters():
+                param.requires_grad = False
+            self.eval() # Ensure dropout and batchnorm are frozen
+            
+        self.intermediate_features = {}
+        
+        # Register PyTorch Forward Hooks on blocks 3, 7, and 11
+        # ViT-B has 12 blocks (0 to 11)
+        for name, module in self.visual.transformer.resblocks.named_children(): # type:ignore
+            if name in ['3', '7', '11']:
+                module.register_forward_hook(self._get_hook(name))
+                
+    def _get_hook(self, layer_name: str):
+        def hook(module, input, output):
+            # Output from OpenCLIP ViT blocks is [Sequence_Len, Batch, Dim] -> [197, B, 768]
+            self.intermediate_features[layer_name] = output
+        return hook
+
+    def _process_feature(self, feat: torch.Tensor) -> torch.Tensor:
+        # Convert [197, B, 768] to [B, 197, 768]
+        feat = feat.permute(1, 0, 2)
+        # Drop the CLS token at index 0 to isolate the 196 spatial patches
+        feat = feat[:, 1:, :] 
+        B, N, D = feat.shape
+        H = W = int(N ** 0.5) # 196 -> 14x14
+        # Reshape to spatial map [B, 768, 14, 14]
+        return feat.reshape(B, H, W, D).permute(0, 3, 1, 2).contiguous()
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self.intermediate_features.clear()
+        
+        # Trigger native forward pass (we don't need the final output, just the hooks)
+        with torch.no_grad() if not self.visual.conv1.weight.requires_grad else torch.enable_grad(): # type:ignore
+            _ = self.visual(x.type(self.visual.conv1.weight.dtype)) # type:ignore
+            
+        early = self._process_feature(self.intermediate_features['3'])
+        mid = self._process_feature(self.intermediate_features['7'])
+        late = self._process_feature(self.intermediate_features['11'])
+
+        return early, mid, late

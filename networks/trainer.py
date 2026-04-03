@@ -14,12 +14,12 @@ class Trainer(BaseModel):
         
 
         if self.is_train and not opt.continue_train:
-            self.model = Patch5Model(unfreeze_last_clip_layer=opt.unfreeze_last_clip_layer, backbone=opt.backbone)
+            self.model = Patch5Model()
             if torch.cuda.device_count() > 1:
                 self.model = nn.DataParallel(self.model)
 
         if opt.continue_train:
-            self.model = Patch5Model(unfreeze_last_clip_layer=opt.unfreeze_last_clip_layer, backbone=opt.backbone)
+            self.model = Patch5Model()
 
         if self.is_train:
             self.loss_fn = nn.BCEWithLogitsLoss()
