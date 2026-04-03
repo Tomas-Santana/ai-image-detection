@@ -86,7 +86,7 @@ def _load_model(
     fs: BaseFS,
     backbone: Literal["clip", "resnet"],
 ) -> torch.nn.Module:
-    model = Patch5Model(backbone=backbone)
+    model = Patch5Model()
     checkpoint_bytes = fs.read_bytes(checkpoint_path)
     state_dict = torch.load(io.BytesIO(checkpoint_bytes), map_location=device)
 
