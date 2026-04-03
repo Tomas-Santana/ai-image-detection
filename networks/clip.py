@@ -68,33 +68,30 @@ class CLIPViT(nn.Module):
             # Output from OpenCLIP ViT blocks is [Sequence_Len, Batch, Dim] -> [197, B, 768]
             self.intermediate_features[layer_name] = output
         return hook
-
-    def _process_feature(self, feat: torch.Tensor) -> torch.Tensor:
-        # Dynamically check where the Sequence dimension (197) is.
-        # ViT-B-16 with 224x224 images always has exactly 197 tokens (196 patches + 1 CLS).
+    
+    def _process_feature(self, feat: torch.Tensor):
         if feat.shape[0] == 197:
-            # Format is [Seq, Batch, Dim], so we must permute it
             feat = feat.permute(1, 0, 2)
             
-        # Now feat is guaranteed to be [Batch, Sequence, Dim] (e.g. [32, 197, 768])
-        # Drop the CLS token at index 0 to isolate the 196 spatial patches
+        # Capture the CLS token BEFORE dropping it!
+        cls_token = feat[:, 0, :] # [B, 768]
         feat = feat[:, 1:, :] 
         
         B, N, D = feat.shape
-        H = W = int(N ** 0.5) # 196 -> 14x14
+        H = W = int(N ** 0.5) 
         
-        # Reshape to spatial map [B, 768, 14, 14]
-        return feat.reshape(B, H, W, D).permute(0, 3, 1, 2).contiguous()
+        spatial_map = feat.reshape(B, H, W, D).permute(0, 3, 1, 2).contiguous()
+        return spatial_map, cls_token
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor):
         self.intermediate_features.clear()
         
-        # Trigger native forward pass (we don't need the final output, just the hooks)
-        with torch.no_grad() if not self.visual.conv1.weight.requires_grad else torch.enable_grad(): # type:ignore
-            _ = self.visual(x.type(self.visual.conv1.weight.dtype)) # type:ignore
+        with torch.no_grad() if not self.visual.conv1.weight.requires_grad else torch.enable_grad():  #type:ignore
+            _ = self.visual(x.type(self.visual.conv1.weight.dtype)) #type:ignore
             
-        early = self._process_feature(self.intermediate_features['3'])
-        mid = self._process_feature(self.intermediate_features['7'])
-        late = self._process_feature(self.intermediate_features['11'])
+        early_map, early_cls = self._process_feature(self.intermediate_features['3'])
+        mid_map, mid_cls = self._process_feature(self.intermediate_features['7'])
+        late_map, late_cls = self._process_feature(self.intermediate_features['11'])
 
-        return early, mid, late
+        # Return Spatial Maps (for fusion) AND Cls tokens (for final embeddings)
+        return (early_map, mid_map, late_map), (early_cls, mid_cls, late_cls)

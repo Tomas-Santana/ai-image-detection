@@ -14,8 +14,8 @@ from azstoragetorch.datasets import BlobDataset, Blob
 import webdataset as wds
 
 
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD = [0.229, 0.224, 0.225]
+CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
+CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
 LABEL_AI = 0
 LABEL_NATURE = 1
 
@@ -97,7 +97,7 @@ class Processor:
         )
 
         self._to_float = v2.ToDtype(torch.float32, scale=True)
-        self._norm = v2.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+        self._norm = v2.Normalize(mean=CLIP_MEAN, std=CLIP_STD)
 
     def __call__(
         self, pil_img: Image.Image

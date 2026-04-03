@@ -42,17 +42,20 @@ class Patch5Model(nn.Module):
         amp = cast(Any, torch.amp)
         use_amp = cropped_img.device.type == "cuda"
         
-        # We enforce no_grad on the backbone to save memory if it's truly frozen
         with torch.no_grad():
-            early, mid, late = self.clip(cropped_img)
+            # Unpack the new dual returns
+            spatial_maps, cls_tokens = self.clip(cropped_img)
+            early, mid, late = spatial_maps
+            _, _, global_cls = cls_tokens # We use the 'late' block CLS token
             
         with amp.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16):
-            batch_size, _, _, _ = cropped_img.shape
+            batch_size = cropped_img.shape[0]
             
             fused_global_maps = self.fusion(early, mid, late) # [B, 256, 14, 14]
 
-            global_embedding = self.avgpool(fused_global_maps).flatten(1)
-            global_embedding = self.ac(global_embedding).view(-1, 1, self.mid_dims) # [B, 1, 256]
+            # FIX: Use the native CLS token instead of Average Pooling!
+            global_embedding = self.ac(self.fc1(global_cls)) # [B, 256]
+            global_embedding = global_embedding.view(-1, 1, self.mid_dims) # [B, 1, 256]
 
             input_loc, _ = self.COOI.get_coordinates(fused_global_maps.detach(), scale)
 
@@ -81,17 +84,17 @@ class Patch5Model(nn.Module):
             ).to(fused_global_maps.device)
             
         with torch.no_grad():
-            # Get just the final layer maps for the local crops
-            _, _, local_maps = self.clip(window_imgs.detach()) # [B*6, 768, 14, 14]
+            # Unpack the local crops
+            _, local_cls_tokens = self.clip(window_imgs.detach()) 
+            _, _, local_cls = local_cls_tokens
             
         with amp.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16):
-            local_embedding = self.avgpool(local_maps).flatten(1)  # [B*6, 768]
-            local_embedding = self.ac(self.fc1(local_embedding))  # [B*6, 256]
+            # FIX: Use local CLS token instead of Average Pooling!
+            local_embedding = self.ac(self.fc1(local_cls))  # [B*6, 256]
             local_embedding = local_embedding.view(batch_size, proposal_size, self.mid_dims) # [B, 6, 256]
 
             cls_tokens = self.cls_token.expand(batch_size, -1, -1) # [B, 1, 256]
             
-            # Assembly
             all_embeddings = torch.cat(
                 (cls_tokens, global_embedding, local_embedding), dim=1
             ) # [B, 8, 256]
@@ -99,7 +102,6 @@ class Patch5Model(nn.Module):
             all_embeddings = all_embeddings + self.seq_pos_embed 
             all_embeddings = self.mha_list(all_embeddings)
             
-            # Predict based on the CLS token containing the summarized context
             all_logits = self.fc(all_embeddings[:, 0])
 
         return all_logits
