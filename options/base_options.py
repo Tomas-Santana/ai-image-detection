@@ -34,7 +34,7 @@ class BaseOptions(Tap):
     blur_p: float = 0.1 # Probability of applying blur
     hflip_p: float = 0.0 # Probability of applying horizontal flip
     blur_sigma: tuple[float, float] = (0.1, 2.0) #  Range for blur sigma when applying blur
-    jpeg_qual: tuple[int, int] = (10, 50) # Range for JPEG quality when applying JPEG compression
+    jpeg_qual: tuple[int, int] = (75, 90) # Range for JPEG quality when applying JPEG compression
     batch_size: int = 32 # Batch size for training
     workers: int = 4 # Number of worker processes for data loading
     gcp_project_name: Optional[str] = None # GCP project name for loading data from GCS (Can be None, in which case will load from local filesystem)
