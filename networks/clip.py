@@ -70,12 +70,19 @@ class CLIPViT(nn.Module):
         return hook
 
     def _process_feature(self, feat: torch.Tensor) -> torch.Tensor:
-        # Convert [197, B, 768] to [B, 197, 768]
-        feat = feat.permute(1, 0, 2)
+        # Dynamically check where the Sequence dimension (197) is.
+        # ViT-B-16 with 224x224 images always has exactly 197 tokens (196 patches + 1 CLS).
+        if feat.shape[0] == 197:
+            # Format is [Seq, Batch, Dim], so we must permute it
+            feat = feat.permute(1, 0, 2)
+            
+        # Now feat is guaranteed to be [Batch, Sequence, Dim] (e.g. [32, 197, 768])
         # Drop the CLS token at index 0 to isolate the 196 spatial patches
         feat = feat[:, 1:, :] 
+        
         B, N, D = feat.shape
         H = W = int(N ** 0.5) # 196 -> 14x14
+        
         # Reshape to spatial map [B, 768, 14, 14]
         return feat.reshape(B, H, W, D).permute(0, 3, 1, 2).contiguous()
 
