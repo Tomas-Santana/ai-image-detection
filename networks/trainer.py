@@ -36,18 +36,25 @@ class Trainer(BaseModel):
                       f"({sum(p.numel() for p in trainable_params):,} params, lr={stage_lr})")
             else:
                 # Stage 2: FuseFormer + fusión + clasificador (DFGM ya entrenado y frozen)
-                for p in raw_model.clip_global.dfgm_modules.parameters():
+                dfgm_params = list(raw_model.clip_global.dfgm_modules.parameters())
+                for p in dfgm_params:
                     p.requires_grad = False
 
                 trainable_params = (
-                    list(raw_model.fuse_former.parameters())   +
-                    list(raw_model.fusion.parameters())        +
-                    list(raw_model.mha_list.parameters())      +
-                    list(raw_model.fc1_local.parameters())     +
-                    list(raw_model.fc.parameters())            +
+                    list(raw_model.fusion.parameters())     +
+                    list(raw_model.mha_list.parameters())   +
+                    list(raw_model.fc1_local.parameters())  +
+                    list(raw_model.fc.parameters())         +
                     [raw_model.cls_token, raw_model.seq_pos_embed]
                 )
-                stage_lr = 5e-6
+
+                # fc1_global solo existe en el modelo sin FuseFormer
+                if hasattr(raw_model, 'fc1_global'):
+                    trainable_params += list(raw_model.fc1_global.parameters())
+
+                # fuse_former solo existe en el modelo con FuseFormer
+                if hasattr(raw_model, 'fuse_former'):
+                    trainable_params += list(raw_model.fuse_former.parameters())
                 print(f"[Trainer] Stage 2 — entrenando FuseFormer+clasificador "
                       f"({sum(p.numel() for p in trainable_params):,} params, lr={stage_lr})")
 
