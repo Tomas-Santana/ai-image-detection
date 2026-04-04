@@ -95,3 +95,117 @@ class CLIPViT(nn.Module):
 
         # Return Spatial Maps (for fusion) AND Cls tokens (for final embeddings)
         return (early_map, mid_map, late_map), (early_cls, mid_cls, late_cls)
+    
+
+class DFGM(nn.Module):
+    """Deepfake-Specific Feature Guidance Module (GFF, sec. 3.3).
+    Bottleneck trainable insertado entre MHSA y MLP de cada bloque ViT.
+    CLIP permanece frozen; solo DFGM se entrena.
+    """
+    def __init__(self, d: int = 768, d_mid: int = 256):
+        super().__init__()
+        self.down = nn.Linear(d, d_mid)
+        self.mid  = nn.Linear(d_mid, d_mid)
+        self.up   = nn.Linear(d_mid, d)
+        self.act  = nn.ReLU()
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        # z: [seq_len, B, 768]  — residual addition
+        return self.up(self.act(self.mid(self.act(self.down(z))))) + z
+
+
+class CLIPViTWithDFGM(nn.Module):
+    """Frozen CLIP ViT-B/16 con DFGM entrenable en cada bloque.
+
+    SOLO para la rama global (cropped_img, batch=B).
+    Para la rama local usa CLIPViT normal (sin DFGM).
+
+    Retorna:
+        spatial_maps : (early, mid, late)  — [B, 768, 14, 14] c/u
+        cls_tokens   : (early, mid, late)  — [B, 768] c/u
+        all_cls      : lista de 12 tensores [B, 768], uno por bloque
+    """
+
+    def __init__(self, model_name: str = "ViT-B-16", pretrained: str = "openai", d_mid: int = 256):
+        super().__init__()
+        clip_model, _, _ = open_clip.create_model_and_transforms(
+            model_name, pretrained=pretrained, jit=False
+        )
+        self.visual = clip_model.visual
+
+        # Congelar TODO CLIP
+        for param in self.visual.parameters(): #type:ignore
+            param.requires_grad = False
+
+        # Detectar el nombre del atributo de atención en esta versión de OpenCLIP
+        sample_block = self.visual.transformer.resblocks[0]  # type: ignore
+        if hasattr(sample_block, 'attn'):
+            self._attn_attr = 'attn'
+        elif hasattr(sample_block, 'attention'):
+            self._attn_attr = 'attention'
+        else:
+            raise RuntimeError(
+                f"No se encontró atributo de atención en el bloque ViT. "
+                f"Atributos disponibles: {[a for a in dir(sample_block) if 'att' in a.lower()]}"
+            )
+
+        # Un DFGM por bloque (12 en ViT-B)
+        n_blocks = len(self.visual.transformer.resblocks)  # type: ignore
+        self.dfgm_modules = nn.ModuleList([
+            DFGM(d=768, d_mid=d_mid) for _ in range(n_blocks)
+        ])
+
+    def _patch_embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Replica el patch embedding de CLIP ViT-B/16."""
+        # x: [B, 3, 224, 224]
+        x = self.visual.conv1(x)                                          # type: ignore [B, 768, 14, 14]
+        x = x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1)       # [B, 196, 768]
+        # Prepend CLS
+        cls = self.visual.class_embedding.to(x.dtype).expand(x.shape[0], 1, -1)  # type: ignore
+        x = torch.cat([cls, x], dim=1)                                    # [B, 197, 768]
+        x = x + self.visual.positional_embedding.to(x.dtype)              # type: ignore
+        x = self.visual.ln_pre(x)                                         # type: ignore [B, 197, 768]
+        return x.permute(1, 0, 2)                                          # [197, B, 768] — seq-first
+
+    def _process_feature(self, feat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """feat: [197, B, 768] -> (spatial_map [B,768,14,14], cls [B,768])"""
+        feat = feat.permute(1, 0, 2)          # [B, 197, 768]
+        cls_token = feat[:, 0, :]             # [B, 768]
+        patches   = feat[:, 1:, :]            # [B, 196, 768]
+        B, N, D   = patches.shape
+        H = W     = int(N ** 0.5)
+        spatial   = patches.reshape(B, H, W, D).permute(0, 3, 1, 2).contiguous()
+        return spatial, cls_token
+
+    def forward(self, x: torch.Tensor) -> Tuple:
+        x = x.type(self.visual.conv1.weight.dtype)  # type: ignore
+
+        # Patch embedding (frozen, no grad)
+        with torch.no_grad():
+            h = self._patch_embed(x)   # [197, B, 768]
+
+        all_cls: list = []
+        intermediate: dict = {}
+
+        for idx, block in enumerate(self.visual.transformer.resblocks):  # type: ignore
+            attn_module = getattr(block, self._attn_attr)
+
+            # MHSA step — frozen
+            with torch.no_grad():
+                z = attn_module(block.ln_1(h)) + h   # [197, B, 768]
+
+            # DFGM step — entrenable, residual ya incluido en DFGM.forward
+            z = self.dfgm_modules[idx](z)             # [197, B, 768]
+
+            # MLP step — frozen
+            with torch.no_grad():
+                h = block.mlp(block.ln_2(z)) + z      # [197, B, 768]
+
+            intermediate[str(idx)] = h
+            all_cls.append(h.permute(1, 0, 2)[:, 0, :])  # [B, 768]
+
+        early_map, early_cls = self._process_feature(intermediate['3'])
+        mid_map,   mid_cls   = self._process_feature(intermediate['7'])
+        late_map,  late_cls  = self._process_feature(intermediate['11'])
+
+        return (early_map, mid_map, late_map), (early_cls, mid_cls, late_cls), all_cls

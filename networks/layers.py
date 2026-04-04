@@ -188,4 +188,36 @@ class ViTLevelFusion(nn.Module):
         x = x.transpose(1, 2).reshape(B, self.mid_dim, H, W)
         return x
 
+class FuseFormer(nn.Module):
+    """Fusiona los 12 CLS tokens de todos los bloques ViT (GFF, sec. 3.4).
+    
+    Prepende un token CLS_fuse aprendible, aplica Transformer, y usa
+    el output de CLS_fuse como representación global final.
+    """
+    def __init__(self, d_model: int = 768, n_layers: int = 2, out_dim: int = 256):
+        super().__init__()
+        self.cls_fuse = nn.Parameter(torch.randn(1, 1, d_model))
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=8,
+            dim_feedforward=d_model * 2,   # 1536
+            dropout=0.1,
+            activation="relu",
+            batch_first=True,
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.proj = nn.Linear(d_model, out_dim)
+        self.act  = nn.ReLU()
+
+    def forward(self, all_cls: list) -> torch.Tensor:
+        """
+        all_cls: lista de 12 tensores, cada uno [B, 768]
+        retorna: [B, out_dim]
+        """
+        B = all_cls[0].shape[0]
+        cls_seq  = torch.stack(all_cls, dim=1)             # [B, 12, 768]
+        cls_fuse = self.cls_fuse.expand(B, -1, -1)         # [B, 1, 768]
+        seq      = torch.cat([cls_fuse, cls_seq], dim=1)   # [B, 13, 768]
+        out      = self.transformer(seq)                   # [B, 13, 768]
+        return self.act(self.proj(out[:, 0, :]))            # [B, out_dim]
 

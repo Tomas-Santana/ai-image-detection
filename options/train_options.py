@@ -23,6 +23,7 @@ class TrainOptions(BaseOptions):
     save_results_to_google_sheets: bool = False # Append one row per epoch to a worksheet named after experiment_name
     google_sheets_spreadsheet_id: str = '' # Target Google Sheets spreadsheet id
     google_sheets_credentials_path: str = '' # Optional path to a Google service-account json key file
+    train_stage: int = 1  # 1 = entrena DFGM solo; 2 = entrena FuseFormer+clasificador
 
     def process_args(self):
         super().process_args()
