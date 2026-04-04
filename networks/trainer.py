@@ -56,7 +56,7 @@ class Trainer(BaseModel):
                 if hasattr(raw_model, 'fuse_former'):
                     trainable_params += list(raw_model.fuse_former.parameters())
                 print(f"[Trainer] Stage 2 — entrenando FuseFormer+clasificador "
-                      f"({sum(p.numel() for p in trainable_params):,} params, lr={stage_lr})")
+                      f"({sum(p.numel() for p in trainable_params):,} params")
 
             if opt.optim == "adam":
                 self.optimizer = torch.optim.AdamW(
