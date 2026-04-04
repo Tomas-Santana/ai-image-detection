@@ -96,11 +96,9 @@ class CLIPViT(nn.Module):
         # Return Spatial Maps (for fusion) AND Cls tokens (for final embeddings)
         return (early_map, mid_map, late_map), (early_cls, mid_cls, late_cls)
     
-
 class DFGM(nn.Module):
     """Deepfake-Specific Feature Guidance Module (GFF, sec. 3.3).
     Bottleneck trainable insertado entre MHSA y MLP de cada bloque ViT.
-    CLIP permanece frozen; solo DFGM se entrena.
     """
     def __init__(self, d: int = 768, d_mid: int = 256):
         super().__init__()
@@ -110,20 +108,16 @@ class DFGM(nn.Module):
         self.act  = nn.ReLU()
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
-        # z: [seq_len, B, 768]  — residual addition
         return self.up(self.act(self.mid(self.act(self.down(z))))) + z
 
 
 class CLIPViTWithDFGM(nn.Module):
     """Frozen CLIP ViT-B/16 con DFGM entrenable en cada bloque.
-
-    SOLO para la rama global (cropped_img, batch=B).
-    Para la rama local usa CLIPViT normal (sin DFGM).
-
-    Retorna:
-        spatial_maps : (early, mid, late)  — [B, 768, 14, 14] c/u
-        cls_tokens   : (early, mid, late)  — [B, 768] c/u
-        all_cls      : lista de 12 tensores [B, 768], uno por bloque
+    
+    Estrategia: igual que CLIPViT — usa forward hooks sobre el output
+    de cada bloque, pero reemplaza ese output con DFGM(output) in-place
+    mediante register_forward_hook. Así no tocamos el forward interno de
+    OpenCLIP y evitamos el problema de MultiheadAttention(q,k,v).
     """
 
     def __init__(self, model_name: str = "ViT-B-16", pretrained: str = "openai", d_mid: int = 256):
@@ -133,79 +127,66 @@ class CLIPViTWithDFGM(nn.Module):
         )
         self.visual = clip_model.visual
 
-        # Congelar TODO CLIP
+        # Congelar todo CLIP
         for param in self.visual.parameters(): #type:ignore
             param.requires_grad = False
+        self.visual.eval() #type:ignore
 
-        # Detectar el nombre del atributo de atención en esta versión de OpenCLIP
-        sample_block = self.visual.transformer.resblocks[0]  # type: ignore
-        if hasattr(sample_block, 'attn'):
-            self._attn_attr = 'attn'
-        elif hasattr(sample_block, 'attention'):
-            self._attn_attr = 'attention'
-        else:
-            raise RuntimeError(
-                f"No se encontró atributo de atención en el bloque ViT. "
-                f"Atributos disponibles: {[a for a in dir(sample_block) if 'att' in a.lower()]}"
-            )
-
-        # Un DFGM por bloque (12 en ViT-B)
+        # Un DFGM por bloque (12 en ViT-B/16)
         n_blocks = len(self.visual.transformer.resblocks)  # type: ignore
         self.dfgm_modules = nn.ModuleList([
             DFGM(d=768, d_mid=d_mid) for _ in range(n_blocks)
         ])
 
-    def _patch_embed(self, x: torch.Tensor) -> torch.Tensor:
-        """Replica el patch embedding de CLIP ViT-B/16."""
-        # x: [B, 3, 224, 224]
-        x = self.visual.conv1(x)                                          # type: ignore [B, 768, 14, 14]
-        x = x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1)       # [B, 196, 768]
-        # Prepend CLS
-        cls = self.visual.class_embedding.to(x.dtype).expand(x.shape[0], 1, -1)  # type: ignore
-        x = torch.cat([cls, x], dim=1)                                    # [B, 197, 768]
-        x = x + self.visual.positional_embedding.to(x.dtype)              # type: ignore
-        x = self.visual.ln_pre(x)                                         # type: ignore [B, 197, 768]
-        return x.permute(1, 0, 2)                                          # [197, B, 768] — seq-first
+        self.intermediate_features: dict = {}
+
+        # Hook en cada bloque: captura output Y aplica DFGM sobre él
+        for name, module in self.visual.transformer.resblocks.named_children():  # type: ignore
+            idx = int(name)
+            module.register_forward_hook(self._make_hook(name, idx))
+
+    def _make_hook(self, layer_name: str, idx: int):
+        dfgm = self.dfgm_modules[idx]
+
+        def hook(module, input, output):
+            # output: [197, B, 768]  (seq-first, OpenCLIP convention)
+            # Aplicamos DFGM — tiene gradientes propios, residual incluido
+            modified = dfgm(output)
+            # Guardamos el output modificado para extraer CLS y spatial maps
+            self.intermediate_features[layer_name] = modified
+            # Retornar el tensor modificado para que el siguiente bloque lo reciba
+            return modified
+
+        return hook
 
     def _process_feature(self, feat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """feat: [197, B, 768] -> (spatial_map [B,768,14,14], cls [B,768])"""
-        feat = feat.permute(1, 0, 2)          # [B, 197, 768]
-        cls_token = feat[:, 0, :]             # [B, 768]
-        patches   = feat[:, 1:, :]            # [B, 196, 768]
+        if feat.shape[0] == 197:
+            feat = feat.permute(1, 0, 2)   # [B, 197, 768]
+        cls_token = feat[:, 0, :]          # [B, 768]
+        patches   = feat[:, 1:, :]         # [B, 196, 768]
         B, N, D   = patches.shape
         H = W     = int(N ** 0.5)
         spatial   = patches.reshape(B, H, W, D).permute(0, 3, 1, 2).contiguous()
         return spatial, cls_token
 
     def forward(self, x: torch.Tensor) -> Tuple:
-        x = x.type(self.visual.conv1.weight.dtype)  # type: ignore
+        self.intermediate_features.clear()
 
-        # Patch embedding (frozen, no grad)
-        with torch.no_grad():
-            h = self._patch_embed(x)   # [197, B, 768]
+        # CLIP corre normalmente (frozen). Los hooks interceptan cada bloque
+        # y aplican DFGM — el output modificado se propaga al bloque siguiente.
+        # No necesitamos no_grad aquí: CLIP params no tienen grad,
+        # pero DFGM sí necesita el grafo para backprop.
+        _ = self.visual(x.type(self.visual.conv1.weight.dtype))  # type: ignore
 
-        all_cls: list = []
-        intermediate: dict = {}
+        # Los hooks llenaron intermediate_features con outputs post-DFGM
+        all_cls = [
+            self.intermediate_features[str(i)].permute(1, 0, 2)[:, 0, :]
+            for i in range(len(self.dfgm_modules))
+        ]   # lista de 12 x [B, 768]
 
-        for idx, block in enumerate(self.visual.transformer.resblocks):  # type: ignore
-            attn_module = getattr(block, self._attn_attr)
-
-            # MHSA step — frozen
-            with torch.no_grad():
-                z = attn_module(block.ln_1(h)) + h   # [197, B, 768]
-
-            # DFGM step — entrenable, residual ya incluido en DFGM.forward
-            z = self.dfgm_modules[idx](z)             # [197, B, 768]
-
-            # MLP step — frozen
-            with torch.no_grad():
-                h = block.mlp(block.ln_2(z)) + z      # [197, B, 768]
-
-            intermediate[str(idx)] = h
-            all_cls.append(h.permute(1, 0, 2)[:, 0, :])  # [B, 768]
-
-        early_map, early_cls = self._process_feature(intermediate['3'])
-        mid_map,   mid_cls   = self._process_feature(intermediate['7'])
-        late_map,  late_cls  = self._process_feature(intermediate['11'])
+        early_map, early_cls = self._process_feature(self.intermediate_features['3'])
+        mid_map,   mid_cls   = self._process_feature(self.intermediate_features['7'])
+        late_map,  late_cls  = self._process_feature(self.intermediate_features['11'])
 
         return (early_map, mid_map, late_map), (early_cls, mid_cls, late_cls), all_cls
