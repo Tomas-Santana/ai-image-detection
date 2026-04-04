@@ -27,6 +27,8 @@ class Trainer(BaseModel):
             raw_model = getattr(self.model, 'module', self.model)
 
             train_stage = getattr(opt, 'train_stage', 1)
+            
+            stage_lr = opt.lr
 
             if train_stage == 1:
                 # Stage 1: solo DFGM — redirige CLIP sin tocar el clasificador
