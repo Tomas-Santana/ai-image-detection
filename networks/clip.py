@@ -156,8 +156,6 @@ class CLIPViTWithDFGM(nn.Module):
         dfgm = self.dfgm_modules[idx]
 
         def hook(module, input, output):
-            # DEBUG
-            print(f"Hook bloque {layer_name} — input[0].shape: {input[0].shape}, output.shape: {output.shape}")
             modified = dfgm(output)
             self.intermediate_features[layer_name] = modified
             return modified
@@ -165,9 +163,12 @@ class CLIPViTWithDFGM(nn.Module):
         return hook
 
     def _process_feature(self, feat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """feat: [197, B, 768] -> (spatial_map [B,768,14,14], cls [B,768])"""
-        if feat.shape[0] == 197:
-            feat = feat.permute(1, 0, 2)   # [B, 197, 768]
+        # feat: [B, 197, 768] — batch-first en esta versión de OpenCLIP
+        if feat.dim() == 3 and feat.shape[1] == 197:
+            pass  # ya es [B, 197, 768]
+        elif feat.dim() == 3 and feat.shape[0] == 197:
+            feat = feat.permute(1, 0, 2)  # seq-first -> batch-first
+
         cls_token = feat[:, 0, :]          # [B, 768]
         patches   = feat[:, 1:, :]         # [B, 196, 768]
         B, N, D   = patches.shape
@@ -179,17 +180,12 @@ class CLIPViTWithDFGM(nn.Module):
         self.intermediate_features.clear()
 
         _ = self.visual(x.type(self.visual.conv1.weight.dtype))  # type: ignore
-        # Los hooks ya llenaron intermediate_features con tensores [197, B, 768]
+        # Los hooks llenan intermediate_features con [B, 197, 768] (batch-first)
 
-        # Construir all_cls extrayendo CLS (índice 0 en dim seq) de cada bloque
         all_cls = []
         for i in range(len(self.dfgm_modules)):
-            feat = self.intermediate_features[str(i)]  # [197, B, 768] o [197, 768] si B=1
-            if feat.dim() == 2:
-                # B=1 y fue squeezed — agregar dimensión de batch
-                feat = feat.unsqueeze(1)   # [197, 1, 768]
-            # feat es ahora [197, B, 768] garantizado
-            cls = feat[0, :, :]            # [B, 768]
+            feat = self.intermediate_features[str(i)]  # [B, 197, 768]
+            cls = feat[:, 0, :]   # [B, 768] — CLS es índice 0 en dim de secuencia
             all_cls.append(cls)
 
         early_map, early_cls = self._process_feature(self.intermediate_features['3'])
