@@ -43,7 +43,7 @@ class CLIPResNet(nn.Module):
         return shallow, middle, high
 
 class CLIPViT(nn.Module):
-    def __init__(self, model_name="ViT-B-16", pretrained="openai", frozen=True):
+    def __init__(self, model_name="ViT-B-16", pretrained="openai", frozen=True, partial_unfreeze=False):
         super(CLIPViT, self).__init__()
         self.clip_model, _, _ = open_clip.create_model_and_transforms(
             model_name, pretrained=pretrained, jit=False
@@ -55,6 +55,12 @@ class CLIPViT(nn.Module):
                 param.requires_grad = False
             self.eval() # Ensure dropout and batchnorm are frozen
             
+        if partial_unfreeze:
+            for i, (name, block) in enumerate(self.visual.transformer.resblocks.named_children()): # type:ignore
+                if int(name) >= 9:  # Descongelar bloques 9, 10, 11
+                    for param in block.parameters():
+                        param.requires_grad = True
+
         self.intermediate_features = {}
         
         # Register PyTorch Forward Hooks on blocks 3, 7, and 11

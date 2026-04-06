@@ -8,10 +8,10 @@ from networks.layers import ViTLevelFusion
 from networks.cooi import ViTCOOI 
 
 class Patch5Model(nn.Module):
-    def __init__(self):
+    def __init__(self, partial_unfreeze: bool = False):
         super(Patch5Model, self).__init__()
         
-        self.clip = CLIPViT(model_name="ViT-B-16", pretrained="openai", frozen=True)
+        self.clip = CLIPViT(model_name="ViT-B-16", pretrained="openai", frozen=True, partial_unfreeze=partial_unfreeze)
         self.mid_dims = 256
         self.COOI = ViTCOOI()
         self.fusion = ViTLevelFusion(self.mid_dims)
@@ -20,13 +20,13 @@ class Patch5Model(nn.Module):
             d_model=self.mid_dims,
             nhead=4,
             dim_feedforward=self.mid_dims,
-            dropout=0.1,
+            dropout=0.3,
             activation="relu",
             batch_first=True,
         )
         self.mha_list = nn.TransformerEncoder(encoder_layer, num_layers=3)
 
-        self.fc1 = nn.Linear(768, self.mid_dims)
+        self.fc1 = nn.Linear(2304, self.mid_dims)
         self.ac = nn.ReLU()
         self.fc = nn.Linear(self.mid_dims, 1)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
@@ -43,10 +43,10 @@ class Patch5Model(nn.Module):
         use_amp = cropped_img.device.type == "cuda"
         
         with torch.no_grad():
-            # Unpack the new dual returns
             spatial_maps, cls_tokens = self.clip(cropped_img)
             early, mid, late = spatial_maps
-            _, _, global_cls = cls_tokens # We use the 'late' block CLS token
+            early_cls, mid_cls, late_cls = cls_tokens
+            global_cls = torch.cat([early_cls, mid_cls, late_cls], dim=-1)  # [B, 2304]
             
         with amp.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16):
             batch_size = cropped_img.shape[0]
