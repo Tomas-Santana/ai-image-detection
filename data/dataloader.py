@@ -69,7 +69,7 @@ class Processor:
         self._augment = v2.Compose(
             [
                 v2.RandomApply(
-                    [v2.GaussianBlur(kernel_size=5, sigma=opt.blur_sigma)],
+                    [v2.GaussianBlur(kernel_size=3, sigma=opt.blur_sigma)],
                     p=opt.transforms.get("blur", 0),
                 ),
                 v2.RandomApply(
