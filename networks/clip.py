@@ -170,20 +170,18 @@ class CLIPViTWithDFGM(nn.Module):
         spatial   = patches.reshape(B, H, W, D).permute(0, 3, 1, 2).contiguous()
         return spatial, cls_token
 
-    def forward(self, x: torch.Tensor) -> Tuple:
+    def forward(self, x: torch.Tensor) -> tuple:
         self.intermediate_features.clear()
 
-        # CLIP corre normalmente (frozen). Los hooks interceptan cada bloque
-        # y aplican DFGM — el output modificado se propaga al bloque siguiente.
-        # No necesitamos no_grad aquí: CLIP params no tienen grad,
-        # pero DFGM sí necesita el grafo para backprop.
         _ = self.visual(x.type(self.visual.conv1.weight.dtype))  # type: ignore
+        # Los hooks ya llenaron intermediate_features con tensores [197, B, 768]
 
-        # Los hooks llenaron intermediate_features con outputs post-DFGM
-        all_cls = [
-            self.intermediate_features[str(i)].permute(1, 0, 2)[:, 0, :]
-            for i in range(len(self.dfgm_modules))
-        ]   # lista de 12 x [B, 768]
+        # Construir all_cls extrayendo CLS (índice 0 en dim seq) de cada bloque
+        all_cls = []
+        for i in range(len(self.dfgm_modules)):
+            feat = self.intermediate_features[str(i)]  # [197, B, 768]
+            cls  = feat[0, :, :]                        # [B, 768]  ← índice 0 en dim-0 (seq-first)
+            all_cls.append(cls)
 
         early_map, early_cls = self._process_feature(self.intermediate_features['3'])
         mid_map,   mid_cls   = self._process_feature(self.intermediate_features['7'])
