@@ -179,8 +179,12 @@ class CLIPViTWithDFGM(nn.Module):
         # Construir all_cls extrayendo CLS (índice 0 en dim seq) de cada bloque
         all_cls = []
         for i in range(len(self.dfgm_modules)):
-            feat = self.intermediate_features[str(i)]  # [197, B, 768]
-            cls  = feat[0, :, :]                        # [B, 768]  ← índice 0 en dim-0 (seq-first)
+            feat = self.intermediate_features[str(i)]  # [197, B, 768] o [197, 768] si B=1
+            if feat.dim() == 2:
+                # B=1 y fue squeezed — agregar dimensión de batch
+                feat = feat.unsqueeze(1)   # [197, 1, 768]
+            # feat es ahora [197, B, 768] garantizado
+            cls = feat[0, :, :]            # [B, 768]
             all_cls.append(cls)
 
         early_map, early_cls = self._process_feature(self.intermediate_features['3'])

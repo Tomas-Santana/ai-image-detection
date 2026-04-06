@@ -214,6 +214,7 @@ class FuseFormer(nn.Module):
         all_cls: lista de 12 tensores, cada uno [B, 768]
         retorna: [B, out_dim]
         """
+        assert all_cls[0].dim() == 2, f"Se esperaba [B, 768] pero llegó {all_cls[0].shape}"
         B = all_cls[0].shape[0]
         cls_seq  = torch.stack(all_cls, dim=1)             # [B, 12, 768]
         cls_fuse = self.cls_fuse.expand(B, -1, -1)         # [B, 1, 768]
