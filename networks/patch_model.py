@@ -58,7 +58,10 @@ class Patch5Model(nn.Module):
 
         with amp.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16):
             fused_global_maps = self.fusion(early, mid, late)              # [B, 256, 14, 14]
-            global_embedding  = self.fuse_former(all_cls).unsqueeze(1)     # [B, 1, 256]
+            global_embedding = self.fuse_former(all_cls)
+            print("fuse_former output shape:", global_embedding.shape)  # debe ser [B, 256]
+            global_embedding = global_embedding.unsqueeze(1)
+            print("global_embedding after unsqueeze:", global_embedding.shape)  # debe ser [B, 1, 256]
 
             # ── Selección de parches locales via COOI ────────────────────────
             input_loc, _ = self.COOI.get_coordinates(fused_global_maps.detach(), scale)
