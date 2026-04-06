@@ -108,7 +108,14 @@ class DFGM(nn.Module):
         self.act  = nn.ReLU()
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
-        return self.up(self.act(self.mid(self.act(self.down(z))))) + z
+        # z puede llegar como [197, B, 768] o [B, 197, 768]
+        # nn.Linear opera sobre dim=-1 en ambos casos — correcto
+        # Guardamos shape original para verificar que no cambia
+        original_shape = z.shape
+        out = self.up(self.act(self.mid(self.act(self.down(z))))) + z
+        assert out.shape == original_shape, \
+            f"DFGM cambió el shape: {original_shape} -> {out.shape}"
+        return out
 
 
 class CLIPViTWithDFGM(nn.Module):
@@ -149,12 +156,10 @@ class CLIPViTWithDFGM(nn.Module):
         dfgm = self.dfgm_modules[idx]
 
         def hook(module, input, output):
-            # output: [197, B, 768]  (seq-first, OpenCLIP convention)
-            # Aplicamos DFGM — tiene gradientes propios, residual incluido
+            # DEBUG
+            print(f"Hook bloque {layer_name} — input[0].shape: {input[0].shape}, output.shape: {output.shape}")
             modified = dfgm(output)
-            # Guardamos el output modificado para extraer CLS y spatial maps
             self.intermediate_features[layer_name] = modified
-            # Retornar el tensor modificado para que el siguiente bloque lo reciba
             return modified
 
         return hook
