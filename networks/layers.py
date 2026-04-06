@@ -14,7 +14,7 @@ class MultiLevelFusion(nn.Module):
             d_model=mid_dim,
             nhead=4,
             dim_feedforward=mid_dim,
-            dropout=0.1,
+            dropout=0.3,
             activation="relu",
             batch_first=True,
         )
@@ -75,7 +75,7 @@ class ThreeLevelFusion(nn.Module):
             d_model=mid_dim,
             nhead=4,
             dim_feedforward=mid_dim,
-            dropout=0.1,
+            dropout=0.3,
             activation="relu",
             batch_first=True,
         )
@@ -160,7 +160,7 @@ class ViTLevelFusion(nn.Module):
             d_model=mid_dim,
             nhead=4,
             dim_feedforward=mid_dim,
-            dropout=0.1,
+            dropout=0.3,
             activation="relu",
             batch_first=True,
         )
