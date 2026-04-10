@@ -104,3 +104,41 @@ class Patch5Model(nn.Module):
             all_logits = self.fc(all_embeddings[:, 0])
 
         return all_logits
+    
+class Patch5ModelGlobalOnly(Patch5Model):
+    def __init__(self, partial_unfreeze: bool = False):
+        super().__init__(partial_unfreeze=partial_unfreeze)
+        # Sequence of 2: 1 CLS Token + 1 Global Token
+        self.seq_pos_embed = nn.Parameter(torch.randn(1, 2, self.mid_dims))
+
+    def forward(
+        self, input_img: torch.Tensor, cropped_img: torch.Tensor, scale: torch.Tensor
+    ) -> torch.Tensor:
+        amp = cast(Any, torch.amp)
+        use_amp = cropped_img.device.type == "cuda"
+        
+        ctx = torch.enable_grad() if self.partial_unfreeze else torch.no_grad()
+        
+        with ctx:
+            spatial_maps, cls_tokens = self.clip(cropped_img)
+            early_cls, mid_cls, late_cls = cls_tokens
+            global_cls = torch.cat([early_cls, mid_cls, late_cls], dim=-1)  # [B, 2304]
+
+        with amp.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16):
+            batch_size = cropped_img.shape[0]
+            
+            global_embedding = self.ac(self.fc1(global_cls.to(dtype=torch.bfloat16 if use_amp else torch.float32)))  # [B, 256]
+            global_embedding = global_embedding.view(-1, 1, self.mid_dims)  # [B, 1, 256]
+
+            cls_tokens_expanded = self.cls_token.expand(batch_size, -1, -1)  # [B, 1, 256]
+
+            all_embeddings = torch.cat(
+                (cls_tokens_expanded, global_embedding), dim=1
+            )  # [B, 2, 256]
+
+            all_embeddings = all_embeddings + self.seq_pos_embed
+            all_embeddings = self.mha_list(all_embeddings)
+            all_logits = self.fc(all_embeddings[:, 0])
+
+        return all_logits
+    
