@@ -81,6 +81,9 @@ class Processor:
                 v2.RandomHorizontalFlip(
                     p=opt.transforms.get("hflip", 0)
                 ),
+                v2.RandomInvert(
+                    p=opt.transforms.get("invert", 0)
+                ),
             ]
         )
         

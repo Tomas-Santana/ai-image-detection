@@ -33,6 +33,7 @@ class BaseOptions(Tap):
     jpeg_p: float = 0.1 # Probability of applying JPEG compression
     blur_p: float = 0.1 # Probability of applying blur
     hflip_p: float = 0.0 # Probability of applying horizontal flip
+    invert_p: float = 0.0 # Probability of applying color inversion
     blur_sigma: tuple[float, float] = (0.1, 2.0) #  Range for blur sigma when applying blur
     jpeg_qual: tuple[int, int] = (75, 95) # Range for JPEG quality when applying JPEG compression
     batch_size: int = 32 # Batch size for training
@@ -86,6 +87,7 @@ class BaseOptions(Tap):
                 "jpeg": self.jpeg_p,
                 "blur": self.blur_p,
                 "hflip": self.hflip_p,
+                "invert": self.invert_p,
             },
             blur_sigma=self.blur_sigma,
             jpeg_quality=self.jpeg_qual,
