@@ -174,7 +174,9 @@ def main() -> None:
                 "jpeg": 1.0 if quality < 100 else 0.0,
                 "hflip": 0.0,
             }
-            dataset_options.blur_sigma = sigma
+            # v2.GaussianBlur throws ValueError if sigma=0.0, so we pass a small >0 value 
+            # when sigma is 0 since the probability of applying it is 0.0 anyway.
+            dataset_options.blur_sigma = sigma if sigma > 0 else (0.1, 0.1)
             dataset_options.jpeg_quality = quality
 
             loader = get_loader(
