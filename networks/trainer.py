@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from networks.base_model import BaseModel
-from networks.patch_model import Patch5Model
+from networks.patch_model import Patch5Model, Patch5ModelGlobalOnly
 from options.train_options import TrainOptions
 
 
@@ -13,15 +13,12 @@ class Trainer(BaseModel):
         super(Trainer, self).__init__(opt)
         
 
-        if self.is_train and not opt.continue_train:
-            self.model = Patch5Model(partial_unfreeze=opt.unfreeze_last_layers)
+        base_model = Patch5Model if opt.variant == 'global+local' else Patch5ModelGlobalOnly
+        self.model = base_model(partial_unfreeze=opt.unfreeze_last_layers)
+            
+        if self.is_train:
             if torch.cuda.device_count() > 1:
                 self.model = nn.DataParallel(self.model)
-
-        if opt.continue_train:
-            self.model = Patch5Model(partial_unfreeze=opt.unfreeze_last_layers)
-
-        if self.is_train:
             self.loss_fn = nn.BCEWithLogitsLoss()
             if opt.optim == "adam":
                 self.optimizer = torch.optim.AdamW(

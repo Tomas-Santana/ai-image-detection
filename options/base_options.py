@@ -26,7 +26,7 @@ class BaseOptions(Tap):
     gpu_ids: list[int] = [0]
     
     backbone: Literal['clip', 'resnet'] = 'clip' # Backbone model to use for Patch5Model. Can be 'clip' or 'resnet'. If 'clip', uses CLIP ResNet-50 with frozen weights (except optionally the last layer). If 'resnet', uses torchvision ResNet-50 with pretrained ImageNet weights and all layers unfrozen.
-
+    variant: Literal['global+local', 'global-only'] = 'global+local' # Whether to use both global and local branches (global+local) or only the global branch (global-only) in Patch5Model. If 'global-only', the model will be trained and evaluated using only the global CLS token branch, without the local patch tokens or fusion. This can be used to ablate the contribution of the local branch.
     # Data options
     models: List[Models] = [] # GenImage models to use. If empty in test mode, models can be auto-discovered from dataroot.
     dataroot: str = "./DATAROOT" # Path to dataset root, which should have subfolders for each model (e.g. ./DATAROOT/imagenet_ai_0508_adm). Can also be a gcs path (gs://my-bucket/data) or Azure container URL root (https://<account>.blob.core.windows.net/<container>/<optional-prefix>)
