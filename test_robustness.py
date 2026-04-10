@@ -10,7 +10,7 @@ from sklearn.metrics import accuracy_score, average_precision_score, roc_curve, 
 from tqdm import tqdm
 
 from data.dataloader import get_loader
-from networks.patch_model import Patch5Model
+from networks.patch_model import Patch5Model, Patch5ModelGlobalOnly
 from options.data_options import Models
 from options.test_options import TestOptions
 from storage.base import BaseFS
@@ -79,8 +79,9 @@ def _load_model(
     device: torch.device,
     fs: BaseFS,
     backbone: Literal["clip", "resnet"],
+    variant: str | None,
 ) -> torch.nn.Module:
-    model = Patch5Model()
+    model = Patch5ModelGlobalOnly() if variant == "global-only" else Patch5Model()
     checkpoint_bytes = fs.read_bytes(checkpoint_path)
     state_dict = torch.load(io.BytesIO(checkpoint_bytes), map_location=device)
 
@@ -137,7 +138,7 @@ def main() -> None:
     results_fs = get_storage_fs(opt.results_dir)
 
     device = torch.device(f"cuda:{opt.gpu_ids[0]}") if opt.gpu_ids else torch.device("cpu")
-    model = _load_model(opt.model_path, device, checkpoint_fs, opt.backbone)
+    model = _load_model(opt.model_path, device, checkpoint_fs, opt.backbone, opt.variant)
 
     models = _resolve_models(opt, dataroot_fs)
     print("Models to evaluate:", ", ".join(models))
