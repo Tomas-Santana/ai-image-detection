@@ -60,8 +60,10 @@ class Processor:
         train: bool,
         input_size: int = 512,
         crop_size: int = 224,
+        force_augment: bool = False,
     ):
         self._train = train
+        self._force_augment = force_augment
         self._crop_size = crop_size
 
         self._to_image = v2.ToImage()
@@ -104,7 +106,7 @@ class Processor:
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         img = self._to_image(pil_img)
         
-        if self._train:
+        if self._train or self._force_augment:
             img = self._augment(img)
             
         base = self._make_square(img)
@@ -150,11 +152,12 @@ class GenImageDataset(Dataset):
         train: bool = True,
         input_size: int = 512,
         crop_size: int = 224,
+        force_augment: bool = False,
     ):
         super().__init__()
         self.root = root
         self.processor = Processor(
-            opt, train=train, input_size=input_size, crop_size=crop_size
+            opt, train=train, input_size=input_size, crop_size=crop_size, force_augment=force_augment
         )
 
         self.images: list[str] = []
@@ -198,6 +201,7 @@ def load_azstoragetorch_blob_dataset(
     train: bool = True,
     input_size: int = 256,
     crop_size: int = 224,
+    force_augment: bool = False,
 ) -> BlobDataset:
     # model_path format: https://<account>.blob.core.windows.net/<container>/<prefix>
     parsed = urlsplit(model_path)
@@ -223,7 +227,7 @@ def load_azstoragetorch_blob_dataset(
         )
     )
 
-    processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
+    processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size, force_augment=force_augment)
 
     def transform_fn(blob: Blob):
         with blob.reader() as f:
@@ -248,11 +252,12 @@ def load_dataflux_mapstyle_dataset(
     train: bool = True,
     input_size: int = 256,
     crop_size: int = 224,
+    force_augment: bool = False,
 ) -> dataflux_mapstyle_dataset.DataFluxMapStyleDataset:
     bucket_name = model_path.replace("gs://", "").split("/")[0]
     prefix = "/".join(model_path.replace("gs://", "").split("/")[1:])
 
-    processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
+    processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size, force_augment=force_augment)
 
     def format_fn(path: str, bytes_content: bytes):
         img: Image.Image = Image.open(BytesIO(bytes_content)).convert("RGB")
@@ -275,6 +280,7 @@ def load_dataset(
     train: bool = True,
     input_size: int = 256,
     crop_size: int = 224,
+    force_augment: bool = False,
 ) -> Dataset:
     if model_path.startswith("gs://"):
         return load_dataflux_mapstyle_dataset(
@@ -283,6 +289,7 @@ def load_dataset(
             train=train,
             input_size=input_size,
             crop_size=crop_size,
+            force_augment=force_augment,
         )
     if model_path.startswith("https://") or model_path.startswith("http://"):
         return load_azstoragetorch_blob_dataset(
@@ -291,9 +298,10 @@ def load_dataset(
             train=train,
             input_size=input_size,
             crop_size=crop_size,
+            force_augment=force_augment,
         )
     return GenImageDataset(
-        model_path, opt, train=train, input_size=input_size, crop_size=crop_size
+        model_path, opt, train=train, input_size=input_size, crop_size=crop_size, force_augment=force_augment
     )
 
 
@@ -400,6 +408,7 @@ def get_loader(
     input_size: int = 256,
     crop_size: int = 224,
     include_filenames: bool = False,
+    force_augment: bool = False,
 ) -> DataLoader:
     """
     Each batch item is:
@@ -426,7 +435,7 @@ def get_loader(
                 f"No WebDataset shards found for split '{split_name}'. Check dataroot, models, and SAS permissions."
             )
         
-        processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size)
+        processor = Processor(opt, train=train, input_size=input_size, crop_size=crop_size, force_augment=force_augment)
         decoder = WDSDecoder(processor)
         loader_workers = min(max(1, opt.workers), len(urls))
 
@@ -462,6 +471,7 @@ def get_loader(
                 train=train,
                 input_size=input_size,
                 crop_size=crop_size,
+                force_augment=force_augment,
             )
         )
 
