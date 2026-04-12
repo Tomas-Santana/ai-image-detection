@@ -1,8 +1,7 @@
 import csv
 import io
 from collections import OrderedDict
-from typing import Any, Literal, Sized, cast
-from itertools import product
+from typing import Any, Literal, cast
 
 import numpy as np
 import torch
@@ -145,7 +144,7 @@ def main() -> None:
 
     # Define the sets of degradation parameters
     blur_sigmas = [0.0, 1.0, 2.0, 3.0]
-    jpeg_qualities = [100, 95, 90, 85, 80, 70]
+    jpeg_qualities = [100] if opt.blur_only else [100, 95, 90, 85, 80, 70]
 
     rows: list[dict[str, float | int | str]] = []
     

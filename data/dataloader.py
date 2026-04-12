@@ -71,7 +71,8 @@ class Processor:
         self._augment = v2.Compose(
             [
                 v2.RandomApply(
-                    [v2.GaussianBlur(kernel_size=3, sigma=opt.blur_sigma)],
+                    # A kernel size of 21 is enough to properly contain a sigma of 3.0
+                    [v2.GaussianBlur(kernel_size=21, sigma=opt.blur_sigma)],
                     p=opt.transforms.get("blur", 0),
                 ),
                 v2.RandomApply(
