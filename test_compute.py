@@ -1,7 +1,7 @@
 import torch
 import time
 # Asegúrate de ejecutar este script desde la raíz del proyecto para que la importación funcione
-from networks.patch_model import Patch5Model
+from networks.patch_model import Patch5Model, Patch5ModelGlobalOnly
 from thop import profile, clever_format
 import argparse
 
@@ -114,10 +114,11 @@ if __name__ == "__main__":
     
     ap = argparse.ArgumentParser(description="Medir complejidad computacional del modelo Patch5Model")
     ap.add_argument("--partial-unfreeze", action="store_true")
+    ap.add_argument("--global-only", action="store_true", help="Usar Patch5ModelGlobalOnly en lugar de Patch5Model")
     
     args = ap.parse_args()
     
-    modelo_prueba = Patch5Model(partial_unfreeze=args.partial_unfreeze)
+    modelo_prueba = Patch5Model(partial_unfreeze=args.partial_unfreeze) if not args.global_only else Patch5ModelGlobalOnly(partial_unfreeze=args.partial_unfreeze)
     
     # Detectar automáticamente si hay GPU disponible
     dispositivo = "cuda" if torch.cuda.is_available() else "cpu"
