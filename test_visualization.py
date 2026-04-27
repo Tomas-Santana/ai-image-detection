@@ -38,23 +38,24 @@ def _load_model(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test a single image and visualize extracted patches.")
-    parser.add_argument("--image_path", type=str, required=True, help="Path to input image.")
-    parser.add_argument("--model_path", type=str, required=True, help="Path to the trained model checkpoint.")
-    parser.add_argument("--output_path", type=str, default="visualization.jpg", help="Path to save the visualization.")
+    parser = argparse.ArgumentParser(description="Probar una sola imagen y visualizar los parches extraídos.")
+    parser.add_argument("--image_path", type=str, required=True, help="Ruta a la imagen de entrada.")
+    parser.add_argument("--model_path", type=str, required=True, help="Ruta al checkpoint del modelo entrenado.")
+    parser.add_argument("--output_path", type=str, default="visualizacion.jpg", help="Ruta para guardar la visualización.")
     parser.add_argument("--variant", type=str, default=None, choices=["global-only", None])
     parser.add_argument("--backbone", type=str, default="clip", choices=["clip", "resnet"])
-    parser.add_argument("--input_size", type=int, default=512, help="Input size for the image (local prep).")
-    parser.add_argument("--crop_size", type=int, default=224, help="Crop size for the global model.")
+    parser.add_argument("--input_size", type=int, default=512, help="Tamaño de entrada para la imagen (prep local).")
+    parser.add_argument("--crop_size", type=int, default=224, help="Tamaño de recorte para el modelo global.")
+    parser.add_argument("--etiqueta_real", type=str, choices=["real", "ia"], default=None, help="Etiqueta real de la imagen ('real' o 'ia').")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    print(f"[{device.type.upper()}] Loading model from {args.model_path}...")
+    print(f"[{device.type.upper()}] Cargando modelo desde {args.model_path}...")
     checkpoint_fs = get_storage_fs(args.model_path)
     model = _load_model(args.model_path, device, checkpoint_fs, args.backbone, args.variant)
     
-    print(f"Loading image {args.image_path}...")
+    print(f"Cargando imagen {args.image_path}...")
     img_fs = get_storage_fs(args.image_path)
     img_bytes = img_fs.read_bytes(args.image_path)
     img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
@@ -68,7 +69,7 @@ def main():
     cropped_img_t = cropped_img.unsqueeze(0).to(device)
     scale_t = scale.unsqueeze(0).to(device)
 
-    print("Running inference...")
+    print("Ejecutando inferencia...")
     use_amp = device.type == "cuda"
     with torch.no_grad():
         with torch.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16) if use_amp else torch.autocast("cpu", enabled=False):
@@ -94,14 +95,22 @@ def main():
     ax.imshow(img_show)
     ax.axis("off")
     
-    classification_text = "NATURE (Real)" if probability >= 0.5 else "AI GENERATED (Fake)"
+    classification_text = "NATURALEZA (Real)" if probability >= 0.5 else "GENERADA POR IA (Falsa)"
     confidence = probability if probability >= 0.5 else (1.0 - probability)
     color_title = 'darkgreen' if probability >= 0.5 else 'darkred'
     
-    title = f"Prediction: {classification_text}\nConfidence: {confidence * 100:.2f}%"
+    title = f"Predicción: {classification_text}\nConfianza: {confidence * 100:.2f}%"
+    
+    texto_resultado = None
+    if args.etiqueta_real:
+        es_real_pred = probability >= 0.5
+        es_real_true = args.etiqueta_real == "real"
+        acierto = es_real_pred == es_real_true
+        texto_resultado = "¡ACIERTO!" if acierto else "INCORRECTO"
+        title += f"\nResultado final: {texto_resultado} (Etiqueta real: {args.etiqueta_real.upper()})"
     
     if input_loc is not None:
-        title += f"  |  Local Patches: {input_loc.size(1)}"
+        title += f"  |  Parches Locales: {input_loc.size(1)}"
         for proposal_no in range(input_loc.size(1)):
             t, left, b, r = input_loc[0, proposal_no].tolist()
             width = r - left
@@ -115,18 +124,21 @@ def main():
             
             ax.text(
                 left, max(t - 10, 10), 
-                f"Patch {proposal_no+1}", 
+                f"Parche {proposal_no+1}", 
                 color='white', fontsize=12, fontweight='bold', 
                 bbox=dict(facecolor='red', edgecolor='red', pad=1.5, alpha=0.7)
             )
             
-    plt.title(title, fontsize=18, fontweight='bold', color=color_title, pad=20)
+    plt.title(title, fontsize=16, fontweight='bold', color=color_title, pad=20)
     plt.tight_layout()
     plt.savefig(args.output_path, bbox_inches='tight', dpi=300)
+    plt.show()
     
-    print(f"\n--- SUCCESS ---")
-    print(f"Prediction: {classification_text} ({confidence * 100:.2f}%)")
-    print(f"Visualization saved successfully to: {args.output_path}")
+    print(f"\n--- ÉXITO ---")
+    print(f"Predicción: {classification_text} ({confidence * 100:.2f}%)")
+    if texto_resultado:
+        print(f"Evaluación del modelo: {texto_resultado}")
+    print(f"Visualización guardada exitosamente en: {args.output_path}")
 
 if __name__ == "__main__":
     main()
