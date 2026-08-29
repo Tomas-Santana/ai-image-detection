@@ -1,7 +1,7 @@
 import csv
 import io
 from collections import OrderedDict
-from typing import Any, Literal, Sized, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import torch
@@ -36,16 +36,12 @@ def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, 
     device = next(model.parameters()).device
     amp = cast(Any, torch.amp)
     use_amp = device.type == "cuda"
-    try:
-        print("number of validation images:", len(cast(Sized, data_loader.dataset)))
-    except TypeError:
-        print("number of validation images: unknown (iterable dataset)")
 
     with torch.no_grad():
         y_true: list[float] = []
         y_pred: list[float] = []
 
-        for data in tqdm(data_loader, desc="Testing"):
+        for data in tqdm(data_loader, desc="Testing", leave=False):
             input_img = data[0]
             cropped_img = data[1].to(device)
             label = data[2].to(device)
@@ -73,9 +69,6 @@ def validate(model: torch.nn.Module, data_loader) -> tuple[float, float, float, 
         roc_auc = auc(fpr, tpr)
     else:
         roc_auc = float('nan')
-        print(
-            f"Validation labels contain one class only ({unique_labels.tolist()}); roc_auc set to NaN for this run"
-        )
     num_images = int(y_true_arr.shape[0])
     return float(acc), float(roc_auc), float(ap), num_images, float(best_threshold), float(best_acc)
 
@@ -122,6 +115,8 @@ def _build_results_csv(rows: list[dict[str, float | int | str]]) -> str:
         fieldnames=[
             "model",
             "split",
+            "blur_sigma",
+            "jpeg_quality",
             "num_images",
             "accuracy",
             "roc_auc",
@@ -147,44 +142,80 @@ def main() -> None:
     models = _resolve_models(opt, dataroot_fs)
     print("Models to evaluate:", ", ".join(models))
 
+    # Define the sets of degradation parameters
+    blur_sigmas = [0.0, 1.0, 2.0, 3.0]
+    jpeg_qualities = [100] if opt.blur_only else [100, 95, 90, 85, 80, 70]
+
     rows: list[dict[str, float | int | str]] = []
+    
     for model_name in models:
-        dataset_options = opt.get_dataset_options(split=opt.test_split)
-        dataset_options.models = [model_name]
+        # We test cross combinations: blur=0 with different jpeg OR jpeg=100 with different blur
+        # To avoid a massive grid, let's do the typical approach:
+        # Test Blur independently (with jpeg=100) and Test JPEG independently (with blur=0)
+        # We'll just merge them in a checklist
+        
+        test_cases = []
+        for sigma in blur_sigmas:
+            test_cases.append((sigma, 100))
+        for quality in jpeg_qualities:
+            if quality != 100:  # avoid duplicate (0.0, 100)
+                test_cases.append((0.0, quality))
+                
+        # Make unique cases, preserving order
+        test_cases = list(dict.fromkeys(test_cases))
 
-        loader = get_loader(
-            dataset_options,
-            train=False,
-            input_size=opt.load_size,
-            crop_size=opt.crop_size,
-        )
-
-        acc, roc_auc, ap, num_images, best_threshold, best_acc = validate(model, loader)
-
-        print(
-            f"[model={model_name}] acc@0.5={acc:.6f}, best_thr={best_threshold:.6f}, "
-            f"acc@best_thr={best_acc:.6f}, roc_auc={roc_auc:.6f}, ap={ap:.6f}, num_images={num_images}"
-        )
-
-        rows.append(
-            {
-                "model": model_name,
-                "split": opt.test_split,
-                "num_images": num_images,
-                "accuracy": float(acc),
-                "roc_auc": float(roc_auc),
-                "average_precision": float(ap),
-                "best_threshold": float(best_threshold),
-                "best_accuracy": float(best_acc),
+        for sigma, quality in test_cases:
+            dataset_options = opt.get_dataset_options(split=opt.test_split)
+            dataset_options.models = [model_name]
+            
+            # Configure data augmentation specifically for robust testing
+            dataset_options.transforms = {
+                "blur": 1.0 if sigma > 0 else 0.0,
+                "jpeg": 1.0 if quality < 100 else 0.0,
+                "hflip": 0.0,
             }
-        )
+            # v2.GaussianBlur throws ValueError if sigma=0.0, so we pass a small >0 value 
+            # when sigma is 0 since the probability of applying it is 0.0 anyway.
+            dataset_options.blur_sigma = sigma if sigma > 0 else (0.1, 0.1)
+            dataset_options.jpeg_quality = quality
 
-    csv_name = f"{opt.experiment_name}_results.csv" if opt.experiment_name else "results.csv"
+            loader = get_loader(
+                dataset_options,
+                train=False,
+                input_size=opt.load_size,
+                crop_size=opt.crop_size,
+                force_augment=True, # Force transformations on test set
+            )
+
+            print(f"Testing [model={model_name}] | Blur Sigma={sigma} | JPEG Quality={quality}")
+            acc, roc_auc, ap, num_images, best_threshold, best_acc = validate(model, loader)
+
+            print(
+                f" -> acc@0.5={acc:.4f}, best_thr={best_threshold:.4f}, "
+                f"acc@best={{best_acc:.4f}}, auc={roc_auc:.4f}, ap={ap:.4f}"
+            )
+
+            rows.append(
+                {
+                    "model": model_name,
+                    "split": opt.test_split,
+                    "blur_sigma": float(sigma),
+                    "jpeg_quality": int(quality),
+                    "num_images": num_images,
+                    "accuracy": float(acc),
+                    "roc_auc": float(roc_auc),
+                    "average_precision": float(ap),
+                    "best_threshold": float(best_threshold),
+                    "best_accuracy": float(best_acc),
+                }
+            )
+
+    csv_name = f"{opt.experiment_name}_robustness_results.csv" if opt.experiment_name else "robustness_results.csv"
     csv_path = results_fs.join_path(opt.results_dir, csv_name)
     csv_content = _build_results_csv(rows)
     results_fs.write_text(csv_path, csv_content)
 
-    print(f"Saved per-model results to: {csv_path}")
+    print(f"Saved robustness results to: {csv_path}")
 
 
 if __name__ == "__main__":

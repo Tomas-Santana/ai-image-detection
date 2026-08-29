@@ -19,22 +19,23 @@ def _is_azure_blob_url(path: str) -> bool:
 class BaseOptions(Tap):
     """Tap-based options with the same flags/behavior as BaseOptions.
 
-    This is intended as a drop-in replacement for the argparse Namespace used
+    This is intended as a drop-in replacement for the argparse Namespace used`
     throughout the codebase (attributes like opt.isTrain, opt.gpu_ids, etc).
     """
     is_train: bool = True
     gpu_ids: list[int] = [0]
     
     backbone: Literal['clip', 'resnet'] = 'clip' # Backbone model to use for Patch5Model. Can be 'clip' or 'resnet'. If 'clip', uses CLIP ResNet-50 with frozen weights (except optionally the last layer). If 'resnet', uses torchvision ResNet-50 with pretrained ImageNet weights and all layers unfrozen.
-
+    variant: Literal['global+local', 'global-only'] = 'global+local' # Whether to use both global and local branches (global+local) or only the global branch (global-only) in Patch5Model. If 'global-only', the model will be trained and evaluated using only the global CLS token branch, without the local patch tokens or fusion. This can be used to ablate the contribution of the local branch.
     # Data options
     models: List[Models] = [] # GenImage models to use. If empty in test mode, models can be auto-discovered from dataroot.
     dataroot: str = "./DATAROOT" # Path to dataset root, which should have subfolders for each model (e.g. ./DATAROOT/imagenet_ai_0508_adm). Can also be a gcs path (gs://my-bucket/data) or Azure container URL root (https://<account>.blob.core.windows.net/<container>/<optional-prefix>)
-    jpeg_p: float = 0.5 # Probability of applying JPEG compression
-    blur_p: float = 0.5 # Probability of applying blur
+    jpeg_p: float = 0.1 # Probability of applying JPEG compression
+    blur_p: float = 0.1 # Probability of applying blur
     hflip_p: float = 0.0 # Probability of applying horizontal flip
+    invert_p: float = 0.0 # Probability of applying color inversion
     blur_sigma: tuple[float, float] = (0.1, 2.0) #  Range for blur sigma when applying blur
-    jpeg_qual: tuple[int, int] = (10, 50) # Range for JPEG quality when applying JPEG compression
+    jpeg_qual: tuple[int, int] = (75, 95) # Range for JPEG quality when applying JPEG compression
     batch_size: int = 32 # Batch size for training
     workers: int = 4 # Number of worker processes for data loading
     gcp_project_name: Optional[str] = None # GCP project name for loading data from GCS (Can be None, in which case will load from local filesystem)
@@ -86,6 +87,7 @@ class BaseOptions(Tap):
                 "jpeg": self.jpeg_p,
                 "blur": self.blur_p,
                 "hflip": self.hflip_p,
+                "invert": self.invert_p,
             },
             blur_sigma=self.blur_sigma,
             jpeg_quality=self.jpeg_qual,

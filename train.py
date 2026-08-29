@@ -47,6 +47,7 @@ def _build_google_sheets_reporter(opt: TrainOptions) -> Any | None:
 def _append_google_sheets_row(
     reporter: Any | None,
     epoch: int,
+    train_loss: float,
     acc: float,
     roc_auc: float,
     ap: float,
@@ -56,6 +57,7 @@ def _append_google_sheets_row(
         return
     reporter.append_epoch_result(
         epoch=epoch,
+        train_loss=train_loss,
         accuracy=acc,
         roc_auc=roc_auc,
         average_precision=ap,
@@ -139,6 +141,8 @@ if __name__ == '__main__':
 
     early_stopping = EarlyStopping(patience=opt.earlystop_epoch, delta=-0.0001, verbose=True)
     for epoch in range(opt.niter):
+        epoch_loss_total = 0.0
+        epoch_step_count = 0
         for data in tqdm(train_loader, desc=f"Epoch {epoch+1}/{opt.niter}"):
             model.total_steps += 1
 
@@ -152,6 +156,8 @@ if __name__ == '__main__':
             scaler.step(model.optimizer)
             scaler.update()
             model.loss = float(loss.detach().item())
+            epoch_loss_total += model.loss
+            epoch_step_count += 1
 
             if model.total_steps % opt.checkpoint_freq == 0:
                 print("Train loss: {} at step: {}".format(model.loss, model.total_steps))
@@ -163,6 +169,7 @@ if __name__ == '__main__':
                 model.save_networks('latest')
                 
         model.scheduler.step()
+        epoch_train_loss = epoch_loss_total / epoch_step_count if epoch_step_count > 0 else float('nan')
 
         if epoch % opt.save_model_freq == 0:
             print('saving the model at the end of epoch %d, iters %d' % (epoch, model.total_steps))
@@ -174,11 +181,20 @@ if __name__ == '__main__':
         val_writer.add_scalar('accuracy', acc, model.total_steps)
         val_writer.add_scalar('roc_auc', roc_auc, model.total_steps)
         val_writer.add_scalar('ap', ap, model.total_steps)
-        print("(Val @ epoch {}) acc: {}; roc_auc: {}; ap: {}".format(epoch, acc, roc_auc, ap))
+        print(
+            "(Val @ epoch {}) train_loss: {}; acc: {}; roc_auc: {}; ap: {}".format(
+                epoch,
+                epoch_train_loss,
+                acc,
+                roc_auc,
+                ap,
+            )
+        )
         _append_evalacc_row(epoch, acc, roc_auc, ap)
         _append_google_sheets_row(
             reporter=google_sheets_reporter,
             epoch=epoch,
+            train_loss=epoch_train_loss,
             acc=acc,
             roc_auc=roc_auc,
             ap=ap,

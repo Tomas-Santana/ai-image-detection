@@ -16,6 +16,7 @@ class GoogleSheetsEpochReporter:
         "timestamp_utc",
         "experiment_name",
         "epoch",
+        "train_loss",
         "accuracy",
         "roc_auc",
         "average_precision",
@@ -38,6 +39,7 @@ class GoogleSheetsEpochReporter:
     def append_epoch_result(
         self,
         epoch: int,
+        train_loss: float,
         accuracy: float,
         roc_auc: float,
         average_precision: float,
@@ -47,6 +49,7 @@ class GoogleSheetsEpochReporter:
             datetime.now(timezone.utc).isoformat(),
             self._experiment_name,
             epoch,
+            train_loss,
             accuracy,
             roc_auc,
             average_precision,
@@ -91,6 +94,11 @@ class GoogleSheetsEpochReporter:
         first_row = self._worksheet.row_values(1)
         if not first_row:
             self._worksheet.append_row(self._HEADER, value_input_option="RAW")
+            return
+
+        normalized = first_row[: len(self._HEADER)]
+        if normalized != self._HEADER:
+            self._worksheet.update('A1', [self._HEADER], value_input_option="RAW")
 
     @staticmethod
     def _build_worksheet_name(experiment_name: str) -> str:

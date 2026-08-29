@@ -6,6 +6,7 @@ class TestOptions(BaseOptions):
     is_train: bool = False
     test_split: str = 'val' # Dataset split to use for evaluation
     results_dir: str = './results' # Folder where evaluation csv results are stored (local path or Azure Blob URL prefix)
+    blur_only: bool = False # If true, only run the blur robust tests
     no_resize: bool = False
     no_crop: bool = False
     eval: bool = True
