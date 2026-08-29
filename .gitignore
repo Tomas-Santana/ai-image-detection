@@ -5,7 +5,4 @@ DATAROOT/
 DATAROOT_WDS/
 .env
 tiny_genimage/
-*.png
-*.jpg
-*.jpeg
 checkpoints/
