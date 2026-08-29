@@ -247,25 +247,42 @@ The global-only model also performs below the complete architecture on unseen ge
 
 ## Robustness to Image Post-Processing
 
-The models were evaluated under progressively stronger JPEG compression and Gaussian blur.
+The models were evaluated under progressively stronger **JPEG compression** and **Gaussian blur** to measure how well their predictions remain stable after common image transformations.
 
 ### JPEG Compression
 
-Models trained with augmentation remain highly robust under JPEG compression.
+The following table reports intra-domain ROC AUC at different JPEG quality factors:
 
-The base model maintains near-perfect intra-domain ROC AUC across the tested JPEG quality factors.
+| Variant | JPEG 100 | JPEG 95 | JPEG 90 | JPEG 85 | JPEG 80 | JPEG 70 |
+|---|---:|---:|---:|---:|---:|---:|
+| **Base** | 0.9982 | **0.9976** | **0.9990** | **0.9992** | **0.9994** | **0.9990** |
+| Frozen backbone | 0.9991 | 0.9971 | 0.9987 | **0.9992** | 0.9992 | 0.9988 |
+| No augmentation | **0.9977** | 0.9893 | 0.9777 | 0.9741 | 0.9364 | 0.9201 |
+| Global only | 0.9950 | 0.9941 | 0.9967 | 0.9985 | 0.9984 | 0.9975 |
 
-In contrast, the model trained without augmentation degrades significantly as compression becomes stronger.
-
-These results indicate that including JPEG compression during training allows the detector to learn representations that are substantially less dependent on compression-sensitive artifacts.
+The base model remains extremely stable across all tested compression levels, with ROC AUC staying at approximately **0.999 even at JPEG quality 70**.
 
 ### Gaussian Blur
 
-Gaussian blur is more challenging for the detector. Performance gradually decreases as the blur intensity increases.
+Gaussian blur produces a more noticeable degradation:
 
-Interestingly, the **global-only** model is the most robust variant under strong Gaussian blur.
+| Variant | σ = 0 | σ = 1 | σ = 2 | σ = 3 |
+|---|---:|---:|---:|---:|
+| **Base** | 0.9982 | **0.9832** | 0.9210 | 0.8787 |
+| Frozen backbone | **0.9991** | 0.9831 | 0.9114 | 0.8734 |
+| No augmentation | 0.9977 | 0.9742 | 0.8618 | 0.7931 |
+| Global only | 0.9944 | 0.9831 | **0.9341** | **0.9135** |
 
-One possible explanation is that removing the local branch forces the classifier to rely more heavily on global semantic representations, which are less sensitive to the destruction of fine spatial information.
+At a moderate blur level of **σ = 1**, all variants remain relatively robust, with ROC AUC values around `0.97–0.98`.
+
+At stronger blur levels, the differences become clearer:
+
+- The **base model** decreases to `0.9210` at σ = 2 and `0.8787` at σ = 3.
+- The **frozen-backbone model** behaves similarly, reaching `0.9114` and `0.8734`.
+- The **no-augmentation model** suffers the largest degradation, falling to `0.8618` at σ = 2 and `0.7931` at σ = 3.
+- The **global-only model** is the most robust under strong blur, maintaining `0.9341` at σ = 2 and `0.9135` at σ = 3.
+
+These results suggest that local image features are more sensitive to the loss of fine spatial detail caused by strong blur. Removing the local branch forces the model to rely more heavily on global representations, which appear to remain more stable under this type of degradation.
 
 ## Computational Efficiency
 
