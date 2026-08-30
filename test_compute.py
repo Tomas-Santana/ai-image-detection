@@ -1,7 +1,7 @@
 import torch
 import time
 # Asegúrate de ejecutar este script desde la raíz del proyecto para que la importación funcione
-from networks.patch_model import Patch5Model, Patch5ModelGlobalOnly
+from networks.cliff import CLIFF, CLIFFGlobalOnly
 from thop import profile, clever_format
 import argparse
 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     
     args = ap.parse_args()
     
-    modelo_prueba = Patch5Model(partial_unfreeze=args.partial_unfreeze) if not args.global_only else Patch5ModelGlobalOnly(partial_unfreeze=args.partial_unfreeze)
+    modelo_prueba = CLIFF(partial_unfreeze=args.partial_unfreeze) if not args.global_only else CLIFFGlobalOnly(partial_unfreeze=args.partial_unfreeze)
     
     # Detectar automáticamente si hay GPU disponible
     dispositivo = "cuda" if torch.cuda.is_available() else "cpu"

@@ -1,16 +1,14 @@
 import argparse
 import io
 from collections import OrderedDict
-from typing import Literal
 
-import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
 
 from data.dataloader import Processor, CLIP_MEAN, CLIP_STD, DatasetOptions
-from networks.patch_model import Patch5Model, Patch5ModelGlobalOnly
+from networks.cliff import CLIFF, CLIFFGlobalOnly
 from storage.default import get_storage_fs
 
 
@@ -21,7 +19,7 @@ def _load_model(
     backbone: str,
     variant: str | None,
 ) -> torch.nn.Module:
-    model = Patch5ModelGlobalOnly() if variant == "global-only" else Patch5Model()
+    model = CLIFFGlobalOnly() if variant == "global-only" else CLIFF()
     checkpoint_bytes = fs.read_bytes(checkpoint_path)
     state_dict = torch.load(io.BytesIO(checkpoint_bytes), map_location=device)
 
@@ -69,7 +67,6 @@ def main():
     cropped_img_t = cropped_img.unsqueeze(0).to(device)
     scale_t = scale.unsqueeze(0).to(device)
 
-    print("Ejecutando inferencia...")
     use_amp = device.type == "cuda"
     with torch.no_grad():
         with torch.autocast("cuda", enabled=use_amp, dtype=torch.bfloat16) if use_amp else torch.autocast("cpu", enabled=False):
@@ -77,7 +74,7 @@ def main():
             probability = torch.sigmoid(logits).item()  # 1.0 = Nature, 0.0 = AI
             
             input_loc = None
-            if not isinstance(model, Patch5ModelGlobalOnly):
+            if not isinstance(model, CLIFFGlobalOnly):
                 spatial_maps, _ = model.clip(cropped_img_t)
                 early, mid, late = spatial_maps
                 fused_global_maps = model.fusion(early, mid, late)

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from networks.base_model import BaseModel
-from networks.patch_model import Patch5Model, Patch5ModelGlobalOnly
+from networks.cliff import CLIFF, CLIFFGlobalOnly
 from options.train_options import TrainOptions
 
 
@@ -13,7 +13,7 @@ class Trainer(BaseModel):
         super(Trainer, self).__init__(opt)
         
 
-        base_model = Patch5Model if opt.variant == 'global+local' else Patch5ModelGlobalOnly
+        base_model = CLIFF if opt.variant == 'global+local' else CLIFFGlobalOnly
         self.model = base_model(partial_unfreeze=opt.unfreeze_last_layers)
             
         if self.is_train:

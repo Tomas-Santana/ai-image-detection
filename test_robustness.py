@@ -9,7 +9,7 @@ from sklearn.metrics import accuracy_score, average_precision_score, roc_curve, 
 from tqdm import tqdm
 
 from data.dataloader import get_loader
-from networks.patch_model import Patch5Model, Patch5ModelGlobalOnly
+from networks.cliff import CLIFF, CLIFFGlobalOnly
 from options.data_options import Models
 from options.test_options import TestOptions
 from storage.base import BaseFS
@@ -80,7 +80,7 @@ def _load_model(
     backbone: Literal["clip", "resnet"],
     variant: str | None,
 ) -> torch.nn.Module:
-    model = Patch5ModelGlobalOnly() if variant == "global-only" else Patch5Model()
+    model = CLIFFGlobalOnly() if variant == "global-only" else CLIFF()
     checkpoint_bytes = fs.read_bytes(checkpoint_path)
     state_dict = torch.load(io.BytesIO(checkpoint_bytes), map_location=device)
 
@@ -149,11 +149,6 @@ def main() -> None:
     rows: list[dict[str, float | int | str]] = []
     
     for model_name in models:
-        # We test cross combinations: blur=0 with different jpeg OR jpeg=100 with different blur
-        # To avoid a massive grid, let's do the typical approach:
-        # Test Blur independently (with jpeg=100) and Test JPEG independently (with blur=0)
-        # We'll just merge them in a checklist
-        
         test_cases = []
         for sigma in blur_sigmas:
             test_cases.append((sigma, 100))

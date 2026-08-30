@@ -7,9 +7,9 @@ from networks.clip import CLIPViT
 from networks.layers import ViTLevelFusion 
 from networks.cooi import ViTCOOI 
 
-class Patch5Model(nn.Module):
+class CLIFF(nn.Module):
     def __init__(self, partial_unfreeze: bool = False):
-        super(Patch5Model, self).__init__()
+        super(CLIFF, self).__init__()
         
         self.clip = CLIPViT(model_name="ViT-B-16", pretrained="openai", frozen=True, partial_unfreeze=partial_unfreeze)
         self.mid_dims = 256
@@ -105,7 +105,7 @@ class Patch5Model(nn.Module):
 
         return all_logits
     
-class Patch5ModelGlobalOnly(Patch5Model):
+class CLIFFGlobalOnly(CLIFF):
     def __init__(self, partial_unfreeze: bool = False):
         super().__init__(partial_unfreeze=partial_unfreeze)
         # Sequence of 2: 1 CLS Token + 1 Global Token

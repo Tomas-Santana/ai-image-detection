@@ -9,7 +9,7 @@ from sklearn.metrics import accuracy_score, average_precision_score, roc_curve, 
 from tqdm import tqdm
 
 from data.dataloader import get_loader
-from networks.patch_model import Patch5Model, Patch5ModelGlobalOnly
+from networks.cliff import CLIFF, CLIFFGlobalOnly
 from options.data_options import Models
 from options.test_options import TestOptions
 from storage.base import BaseFS
@@ -87,7 +87,7 @@ def _load_model(
     backbone: Literal["clip", "resnet"],
     variant: str | None,
 ) -> torch.nn.Module:
-    model = Patch5ModelGlobalOnly() if variant == "global-only" else Patch5Model()
+    model = CLIFFGlobalOnly() if variant == "global-only" else CLIFF()
     checkpoint_bytes = fs.read_bytes(checkpoint_path)
     state_dict = torch.load(io.BytesIO(checkpoint_bytes), map_location=device)
 
