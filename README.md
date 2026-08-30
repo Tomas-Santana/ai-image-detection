@@ -14,6 +14,8 @@ The method is designed to improve generalization across unseen image generators 
 
 ![Architecture Overview](assets/CLIFF.png)
 
+Model weights are hosted on [huggingface](https://huggingface.co/tomassantana/CLIFF).
+
 ## Overview
 
 Modern generative models can produce images that are increasingly difficult to distinguish from real photographs. While deep learning detectors can achieve very high performance when tested on generators similar to those seen during training, their performance often decreases significantly when evaluated on previously unseen generative models.
