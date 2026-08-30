@@ -131,7 +131,6 @@ def main():
     plt.savefig(args.output_path, bbox_inches='tight', dpi=300)
     plt.show()
     
-    print(f"\n--- ÉXITO ---")
     print(f"Predicción: {classification_text} ({confidence * 100:.2f}%)")
     if texto_resultado:
         print(f"Evaluación del modelo: {texto_resultado}")
